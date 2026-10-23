@@ -44,8 +44,9 @@
   }
 
   // ---------------------------------------------------------------- mermaid setup
-  function configure(theme, layout) {
-    var key = (theme || "default") + "|" + (layout || "dagre");
+  function configure(theme, layout, font) {
+    var family = font && String(font).trim() ? String(font) : FONT;
+    var key = (theme || "default") + "|" + (layout || "dagre") + "|" + family;
     if (configuredTheme === key) return;
     var noMax = { useMaxWidth: false };
     mermaid.initialize({
@@ -53,7 +54,8 @@
       layout: layout || "dagre",
       securityLevel: "strict",
       theme: theme || "default",
-      fontFamily: FONT,
+      fontFamily: family,
+      themeVariables: { fontFamily: family },
       htmlLabels: false,
       flowchart: { htmlLabels: false, useMaxWidth: false },
       class: { htmlLabels: false, useMaxWidth: false },
@@ -378,7 +380,7 @@
       window.odgLayout.hints.pos = dirs.pos;
       window.odgLayout.hints.layer = dirs.layer;
     }
-    configure(req.theme, layoutName);
+    configure(req.theme, layoutName, req.font);
     out.layout_mode = dirs.mode;
     if (layoutName) source = withLayout(source, layoutName);
     try {

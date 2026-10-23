@@ -11,6 +11,8 @@ pub mod model;
 pub mod report;
 pub mod source;
 pub mod syntax;
+pub mod mcp_config;
+pub mod update;
 pub mod workspace;
 
 pub use analyze::{analyze, build_report, Analysis, AnalyzeOptions};

@@ -53,7 +53,10 @@ fn to_value<T: serde::Serialize>(v: T) -> R {
 /// Dispatches one call. Public for Rust consumers (the GTK app uses odg-core directly).
 pub fn invoke(method: &str, a: &Value) -> R {
     match method {
-        "version" => Ok(json!({"version": odg_core::VERSION, "mermaid": odg_core::mermaid_version()})),
+        "version" => Ok(json!({"version": odg_core::VERSION, "mermaid": odg_core::mermaid_version(),
+            "releases_api": odg_core::update::RELEASES_API, "releases_page": odg_core::update::RELEASES_PAGE})),
+        // args: release_json (GitHub latest-release response), current, platform (macos|windows|linux)
+        "update_evaluate" => to_value(odg_core::update::evaluate(arg(a, "release_json")?, arg(a, "current")?, arg(a, "platform")?)?),
         "strings" => to_value(i18n::all_strings(lang(a))),
         "t" => {
             let key = arg(a, "key")?;
@@ -159,22 +162,18 @@ pub fn invoke(method: &str, a: &Value) -> R {
         "resolve_feedback" => to_value(ws(a)?.resolve_feedback(arg(a, "id")?, opt(a, "resolution"), actor(a)).map_err(|e| e.to_string())?),
         "config" => to_value(ws(a)?.config()),
         "set_config" => {
+            // merge: only the keys present in args change ("" clears a key)
             let w = ws(a)?;
-            let cfg = WorkspaceConfig { lang: opt(a, "lang").map(str::to_string), theme: opt(a, "theme").map(str::to_string) };
+            let mut cfg: WorkspaceConfig = w.config();
+            let field = |k: &str| a.get(k).and_then(Value::as_str).map(|s| s.trim().to_string());
+            if let Some(v) = field("lang") { cfg.lang = (!v.is_empty()).then_some(v); }
+            if let Some(v) = field("theme") { cfg.theme = (!v.is_empty()).then_some(v); }
+            if let Some(v) = field("font") { cfg.font = (!v.is_empty()).then_some(v); }
             w.set_config(&cfg).map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
         // MCP configuration snippets for the "Copy MCP config" button.
-        "mcp_config" => {
-            let exe = arg(a, "odg_path")?;
-            let w = arg(a, "workspace")?;
-            let generic = json!({"mcpServers": {"odiagramador": {"command": exe, "args": ["mcp", "--workspace", w]}}});
-            Ok(json!({
-                "json": serde_json::to_string_pretty(&generic).unwrap(),
-                "claude_code": format!("claude mcp add odiagramador -- \"{exe}\" mcp --workspace \"{w}\""),
-                "codex": format!("[mcp_servers.odiagramador]\ncommand = {exe:?}\nargs = [\"mcp\", \"--workspace\", {w:?}]"),
-            }))
-        }
+        "mcp_config" => Ok(odg_core::mcp_config::snippets(arg(a, "odg_path")?, arg(a, "workspace")?, opt(a, "url"), opt(a, "token"))),
         _ => Err(format!("unknown method `{method}`")),
     }
 }

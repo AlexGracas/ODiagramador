@@ -20,7 +20,7 @@ AI-friendly **Mermaid** diagram viewer — offline, native, with a built-in MCP 
 
 ## Usar com agentes de IA (MCP)
 
-O servidor MCP vem dentro do app (`odg`). No app, use **Copiar config MCP** — ou, no Claude Code:
+O servidor MCP vem dentro do app (`odg`). No app, o botão **MCP** copia a configuração para Claude Code, Codex, Cursor ou Claude Desktop — ou, no Claude Code:
 
 ```bash
 claude mcp add odiagramador -- /Applications/ODiagramador.app/Contents/MacOS/odg mcp --workspace /caminho/do/projeto
@@ -28,9 +28,14 @@ claude mcp add odiagramador -- /Applications/ODiagramador.app/Contents/MacOS/odg
 
 No Windows o caminho é `...\ODiagramador\odg.exe`. Guia completo: [docs/AGENTS.md](https://github.com/AlexGracas/ODiagramador/blob/main/docs/AGENTS.md).
 
-## Novidades da 0.1.1
-- Licença **MIT** (arquivo `LICENSE` incluído no repositório e nos pacotes).
-- Versão alinhada em todos os componentes (`odg --version`, app macOS e app Windows mostram 0.1.1).
+## Novidades da 0.2.0
+- **Barra de ferramentas com ícones**: abrir pasta, novo diagrama, **Exportar** (PNG ou SVG) e **MCP** com o ícone de cada programa (Claude Code, Codex, Cursor, Claude Desktop).
+- **Configurações** (⌘, no macOS; engrenagem no Windows/Linux): idioma, aparência clara/escura/do sistema, fonte do editor, fonte do diagrama (vale também para os agentes).
+- **MCP remoto**: exponha o servidor MCP numa porta (só este computador ou a rede local, sempre com token) e copie a configuração remota para cada cliente. Na linha de comando: `odg mcp --http 0.0.0.0:7410 --token …`.
+- **Atualização automática**: o app verifica os releases do GitHub (uma vez por dia, ou em *Verificar atualizações…*) e pode baixar, substituir e reiniciar sozinho (macOS e Windows; no Linux abre a página do release).
+- **Windows**: corrigido o *Copiar config MCP* (a área de transferência agora é tentada de novo quando outro app a bloqueia, com aviso de confirmação e, em último caso, uma janela com o texto para copiar). Visual Fluent com modo escuro (.NET 10).
+
+> Atualizando da 0.1.x: baixe esta versão manualmente uma vez; a partir dela, as próximas chegam pelo próprio app.
 
 ## Funcionalidades
 - Prévia ao vivo, painel de problemas com linha/coluna e dicas, comentários do humano para o agente, PT/EN.

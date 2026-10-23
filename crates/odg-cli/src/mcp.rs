@@ -5,7 +5,7 @@
 //! Design goal: one tool call gives an agent everything it needs — validity, a numbered problem
 //! list with lines and fixes, and an image where the same numbers are drawn on the diagram.
 
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Read, Write};
 
 use base64::Engine as _;
 use odg_core::analyze::{excerpt, Analysis};
@@ -51,6 +51,94 @@ pub fn serve(ws: Workspace, renderer: Renderer, lang: Lang) {
             let _ = stdout.flush();
         }
     }
+}
+
+/// MCP "Streamable HTTP" transport (POST JSON-RPC, JSON responses; no server-initiated SSE).
+/// `token`: required `Authorization: Bearer <token>`; mandatory when listening beyond loopback.
+pub fn serve_http(ws: Workspace, renderer: Renderer, lang: Lang, addr: &str, token: Option<String>) -> Result<(), String> {
+    let http = tiny_http::Server::http(addr).map_err(|e| format!("cannot listen on {addr}: {e}"))?;
+    eprintln!("odg: MCP over HTTP at http://{addr}/mcp{}", if token.is_some() { " (bearer token required)" } else { "" });
+    let mut server = Server { ws, renderer, lang, client: None };
+    let header = |name: &str, value: &str| tiny_http::Header::from_bytes(name.as_bytes(), value.as_bytes()).unwrap();
+    for mut req in http.incoming_requests() {
+        let get = |name: &str| {
+            req.headers()
+                .iter()
+                .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(name))
+                .map(|h| h.value.as_str().to_string())
+        };
+        let path = req.url().split('?').next().unwrap_or("").to_string();
+        let method = req.method().clone();
+        if path == "/health" {
+            let _ = req.respond(tiny_http::Response::from_string("ok"));
+            continue;
+        }
+        // auth first; without a token, refuse browser origins (DNS-rebinding protection)
+        let authorized = match &token {
+            Some(t) => get("authorization").is_some_and(|v| constant_eq(v.trim(), &format!("Bearer {t}"))),
+            None => get("origin").is_none_or(|o| is_local_origin(&o)),
+        };
+        if !authorized {
+            let _ = req.respond(tiny_http::Response::from_string("unauthorized").with_status_code(401).with_header(header("WWW-Authenticate", "Bearer")));
+            continue;
+        }
+        if path != "/mcp" && path != "/" {
+            let _ = req.respond(tiny_http::Response::from_string("not found").with_status_code(404));
+            continue;
+        }
+        match method {
+            tiny_http::Method::Post => {
+                let mut body = String::new();
+                if req.as_reader().take(32 * 1024 * 1024).read_to_string(&mut body).is_err() {
+                    let _ = req.respond(tiny_http::Response::from_string("bad body").with_status_code(400));
+                    continue;
+                }
+                let parsed = serde_json::from_str::<Value>(&body);
+                let is_init = matches!(&parsed, Ok(v) if v.get("method").and_then(Value::as_str) == Some("initialize"));
+                let reply: Option<Value> = match parsed {
+                    Ok(Value::Array(batch)) => {
+                        let out: Vec<Value> = batch.into_iter().filter_map(|m| server.dispatch(m)).collect();
+                        (!out.is_empty()).then_some(Value::Array(out))
+                    }
+                    Ok(msg) => server.dispatch(msg),
+                    Err(e) => Some(json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32700, "message": format!("parse error: {e}")}})),
+                };
+                let resp = match reply {
+                    None => tiny_http::Response::from_string("").with_status_code(202),
+                    Some(v) => {
+                        let mut r = tiny_http::Response::from_string(v.to_string()).with_header(header("Content-Type", "application/json"));
+                        if is_init {
+                            r = r.with_header(header("Mcp-Session-Id", &session_id()));
+                        }
+                        r
+                    }
+                };
+                let _ = req.respond(resp);
+            }
+            tiny_http::Method::Delete => {
+                let _ = req.respond(tiny_http::Response::from_string("").with_status_code(200));
+            }
+            _ => {
+                // no server-initiated stream: clients fall back to plain POST
+                let _ = req.respond(tiny_http::Response::from_string("method not allowed").with_status_code(405).with_header(header("Allow", "POST, DELETE")));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn constant_eq(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+fn is_local_origin(origin: &str) -> bool {
+    let host = origin.split("://").nth(1).unwrap_or(origin).split(['/', ':']).next().unwrap_or("");
+    matches!(host, "localhost" | "127.0.0.1" | "[::1]" | "::1")
+}
+
+fn session_id() -> String {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    odg_core::sha256_hex(format!("{now}{}", std::process::id()).as_bytes())[..32].to_string()
 }
 
 fn ok(id: Value, result: Value) -> Value {
@@ -136,6 +224,7 @@ impl Server {
             png: true,
             annotated: true,
             scale: args.get("scale").and_then(Value::as_f64).unwrap_or(1.5).clamp(0.5, 4.0),
+            font: self.ws.config().font,
             ..Default::default()
         }
     }

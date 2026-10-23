@@ -46,7 +46,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
       - name: Build Rust core and odg
         run: cargo build --release -p odg-ffi -p odg-cli
       - name: Smoke test odg (headless WebView2 render)
@@ -58,7 +58,7 @@ jobs:
           $version = "$env:TAG".TrimStart("v")
           dotnet publish apps/windows/ODiagramador/ODiagramador.csproj -c Release -r win-x64 --self-contained true `
             -p:Version=$version -o dist/ODiagramador
-          foreach ($f in "ODiagramador.exe", "odg_ffi.dll", "odg.exe", "LICENSE.txt", "render-kit/index.html", "render-kit/vendor/mermaid-odg.min.js") {
+          foreach ($f in "ODiagramador.exe", "odg_ffi.dll", "odg.exe", "LICENSE.txt", "render-kit/index.html", "render-kit/vendor/mermaid-odg.min.js", "icons/modelcontextprotocol.svg") {
             if (-not (Test-Path "dist/ODiagramador/$f")) { throw "missing $f in the published app" }
           }
       - name: Smoke test app start-up

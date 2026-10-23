@@ -56,7 +56,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
       - run: cargo build --release -p odg-ffi -p odg-cli
       - run: dotnet publish apps/windows/ODiagramador/ODiagramador.csproj -c Release -o dist/ODiagramador-windows
       - uses: actions/upload-artifact@v4

@@ -9,6 +9,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        MainActor.assumeIsolated { RemoteMCP.current?.stop() }
+    }
 }
 
 @main
@@ -25,6 +29,9 @@ struct ODiagramadorApp: App {
                 .onOpenURL { state.handle(url: $0) }
         }
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                SettingsCommands(state: state)
+            }
             CommandGroup(replacing: .newItem) {
                 Button(state.t("ui-open-folder")) { state.chooseWorkspace() }.keyboardShortcut("o")
             }
@@ -33,6 +40,29 @@ struct ODiagramadorApp: App {
                 Button(state.t("ui-export-png")) { state.export(png: true) }.keyboardShortcut("e")
                 Button(state.t("ui-export-svg")) { state.export(png: false) }.keyboardShortcut("e", modifiers: [.command, .shift])
             }
+        }
+
+        Window(state.t("ui-settings"), id: "settings") {
+            SettingsView()
+                .environmentObject(state)
+        }
+        .windowResizability(.contentSize)
+    }
+}
+
+/// App menu: Settings… (⌘,) and Check for Updates…
+struct SettingsCommands: View {
+    @ObservedObject var state: AppState
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button(state.t("ui-settings") + "…") {
+            state.settingsTab = "general"
+            openWindow(id: "settings")
+        }
+        .keyboardShortcut(",")
+        Button(state.t("ui-check-updates")) {
+            Task { await state.updater.check(userInitiated: true) { k, a in state.t(k, a) } }
         }
     }
 }

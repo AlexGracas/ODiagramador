@@ -23,8 +23,32 @@ final class AppState: ObservableObject {
     @Published var agentChangedAt: Date?
     @Published var errorMessage: String?
     @Published var scrollToLine: Int?
+    /// Transient confirmation shown at the bottom of the window ("MCP configuration copied…").
+    @Published var toast: String?
+
+    // MARK: preferences (Settings window)
+    @Published var appearance: String = UserDefaults.standard.string(forKey: "appearance") ?? "system" {
+        didSet { UserDefaults.standard.set(appearance, forKey: "appearance"); applyAppearance() }
+    }
+    @Published var editorFontSize: Double = UserDefaults.standard.object(forKey: "editorFontSize") as? Double ?? 13 {
+        didSet { UserDefaults.standard.set(editorFontSize, forKey: "editorFontSize") }
+    }
+    @Published var editorFontName: String = UserDefaults.standard.string(forKey: "editorFontName") ?? "" {
+        didSet { UserDefaults.standard.set(editorFontName, forKey: "editorFontName") }
+    }
+    /// Diagram font family, stored in the workspace so agents render with the same font.
+    @Published var diagramFont: String = "" {
+        didSet {
+            guard diagramFont != oldValue, !loading, let ws = workspace else { return }
+            try? Core.run("set_config", ["workspace": ws.path, "font": diagramFont])
+            render()
+        }
+    }
+    @Published var settingsTab = "general"
 
     let viewer = ViewerBridge()
+    let updater = Updater()
+    let remote = RemoteMCP()
     private var savedSource = ""
     private var loading = false
     private var renderTask: Task<Void, Never>?
@@ -54,6 +78,30 @@ final class AppState: ObservableObject {
         }
         if let path = UserDefaults.standard.string(forKey: "workspace"), FileManager.default.fileExists(atPath: path) {
             openWorkspace(URL(fileURLWithPath: path))
+        }
+        applyAppearance()
+        updater.checkOnLaunch { [weak self] k, a in self?.t(k, a) ?? k }
+    }
+
+    func applyAppearance() {
+        switch appearance {
+        case "light": NSApp?.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp?.appearance = NSAppearance(named: .darkAqua)
+        default: NSApp?.appearance = nil
+        }
+    }
+
+    var editorFont: NSFont {
+        let size = CGFloat(editorFontSize)
+        if !editorFontName.isEmpty, let f = NSFont(name: editorFontName, size: size) { return f }
+        return .monospacedSystemFont(ofSize: size, weight: .regular)
+    }
+
+    func showToast(_ text: String) {
+        toast = text
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            if self?.toast == text { self?.toast = nil }
         }
     }
 
@@ -102,10 +150,15 @@ final class AppState: ObservableObject {
     func openWorkspace(_ url: URL) {
         workspace = url
         UserDefaults.standard.set(url.path, forKey: "workspace")
-        if let cfg = try? Core.call("config", ["workspace": url.path], as: WorkspaceConfig.self), let l = cfg.lang, l != lang {
+        let cfg = try? Core.call("config", ["workspace": url.path], as: WorkspaceConfig.self)
+        if let l = cfg?.lang, l != lang {
             lang = l
             loadStrings()
         }
+        loading = true
+        diagramFont = cfg?.font ?? ""
+        loading = false
+        remote.configure(workspace: url, odgPath: odgPath)
         selectedPath = nil
         lastModified = [:]
         refreshList()
@@ -258,6 +311,7 @@ final class AppState: ObservableObject {
         viewer.send([
             "op": "process", "id": renderSeq, "source": source,
             "theme": darkMode ? "dark" : "default", "png": true, "scale": 2,
+            "font": diagramFont,
         ])
     }
 
@@ -389,12 +443,36 @@ final class AppState: ObservableObject {
         return RenderKit.repoRoot.appendingPathComponent("target/release/odg").path
     }
 
-    func copyMcpConfig(_ kind: String) {
-        guard let ws = workspace,
-              let cfg = try? Core.call("mcp_config", ["odg_path": odgPath, "workspace": ws.path], as: McpConfig.self) else { return }
-        let text = kind == "claude" ? cfg.claudeCode : kind == "codex" ? cfg.codex : cfg.json
+    /// Targets of the MCP menu: id → display name.
+    static let mcpClients: [(id: String, name: String)] = [
+        ("claude-code", "Claude Code"), ("codex", "Codex"), ("cursor", "Cursor"), ("claude-desktop", "Claude Desktop"),
+    ]
+
+    /// Copies the MCP configuration for `client` (local stdio, or the remote HTTP server when `remoteURL`).
+    func copyMcpConfig(_ client: String, remote remoteURL: Bool = false) {
+        guard let ws = workspace else {
+            errorMessage = t("ui-no-workspace")
+            return
+        }
+        var args: [String: Any] = ["odg_path": odgPath, "workspace": ws.path]
+        if remoteURL {
+            args["url"] = remote.url
+            args["token"] = remote.token
+        }
+        guard let cfg = try? Core.call("mcp_config", args, as: McpConfig.self) else { return }
+        let text: String
+        switch (client, remoteURL) {
+        case ("claude-code", false): text = cfg.claudeCode
+        case ("codex", false): text = cfg.codex
+        case ("claude-code", true): text = cfg.remoteClaudeCode ?? cfg.claudeCode
+        case ("codex", true): text = cfg.remoteCodex ?? cfg.codex
+        case (_, true): text = cfg.remoteJson ?? cfg.json
+        default: text = cfg.json
+        }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+        let name = AppState.mcpClients.first(where: { $0.id == client })?.name ?? t("ui-mcp-other")
+        showToast(t("ui-mcp-copied", ["app": name]))
     }
 
     /// odiagramador://open?workspace=/abs/path&path=diagrams/x.mmd

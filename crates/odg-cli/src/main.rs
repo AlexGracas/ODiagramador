@@ -28,11 +28,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Run the MCP server over stdio
+    /// Run the MCP server (stdio by default, or HTTP with --http)
     Mcp {
         /// Workspace folder (default: current directory)
         #[arg(long, short)]
         workspace: Option<PathBuf>,
+        /// Serve MCP over HTTP instead of stdio, e.g. 127.0.0.1:7410 or 0.0.0.0:7410 (remote)
+        #[arg(long)]
+        http: Option<String>,
+        /// Bearer token for HTTP clients (or ODG_MCP_TOKEN); required unless bound to loopback
+        #[arg(long)]
+        token: Option<String>,
     },
     /// Validate diagrams; prints problems and exits with 1 if any has errors
     Check {
@@ -102,9 +108,20 @@ fn main() -> ExitCode {
     let lang_arg = cli.lang.clone();
     let result = match cli.cmd {
         Cmd::McpConfig { client, workspace } => mcp_config(client, workspace),
-        Cmd::Mcp { workspace } => open_ws(workspace).and_then(|ws| {
+        Cmd::Mcp { workspace, http, token } => open_ws(workspace).and_then(|ws| {
             let lang = lang_for(lang_arg.as_deref(), Some(&ws));
-            odg_render::run(move |r| mcp::serve(ws, r, lang))?;
+            match http {
+                None => odg_render::run(move |r| mcp::serve(ws, r, lang))?,
+                Some(addr) => {
+                    let token = token.or_else(|| std::env::var("ODG_MCP_TOKEN").ok()).filter(|t| !t.trim().is_empty());
+                    let host = addr.rsplit_once(':').map(|(h, _)| h).unwrap_or(&addr);
+                    let loopback = matches!(host, "127.0.0.1" | "localhost" | "[::1]" | "::1");
+                    if !loopback && token.is_none() {
+                        return Err(format!("listening on {addr} exposes the workspace to the network: pass --token (or ODG_MCP_TOKEN)"));
+                    }
+                    odg_render::run(move |r| mcp::serve_http(ws, r, lang, &addr, token))??;
+                }
+            }
             Ok(ExitCode::SUCCESS)
         }),
         Cmd::Check { files, workspace, json, no_save } => open_ws(workspace).and_then(|ws| {
@@ -143,7 +160,7 @@ fn check(ws: &Workspace, r: &odg_render::Renderer, files: Vec<PathBuf>, json: bo
         }
         out
     };
-    let opts = AnalyzeOptions { lang, png: save, annotated: save, ..Default::default() };
+    let opts = AnalyzeOptions { lang, png: save, annotated: save, font: ws.config().font, ..Default::default() };
     let mut failed = false;
     let mut reports = vec![];
     for file in targets {
@@ -210,7 +227,7 @@ fn render(r: &odg_render::Renderer, file: PathBuf, out: Option<PathBuf>, svg: bo
 }
 
 fn watch(ws: &Workspace, r: &odg_render::Renderer, lang: Lang) -> Result<ExitCode, String> {
-    let opts = AnalyzeOptions { lang, ..Default::default() };
+    let opts = AnalyzeOptions { lang, font: ws.config().font, ..Default::default() };
     let mut seen: std::collections::HashMap<String, SystemTime> = Default::default();
     eprintln!("watching {} (Ctrl+C to stop)", ws.root().display());
     loop {

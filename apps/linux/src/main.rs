@@ -22,6 +22,12 @@ use serde_json::{json, Value};
 use sourceview::prelude::*;
 use webkit::prelude::*;
 
+mod prefs;
+mod settings;
+
+use prefs::{Prefs, RemoteMcp};
+use settings::{client_icon, icon_popover, themed_icon, MenuEntry, MCP_CLIENTS};
+
 const APP_ID: &str = "io.odiagramador.app";
 
 const ASSETS: &[(&str, &[u8], &str)] = &[
@@ -52,6 +58,10 @@ struct State {
     modified: BTreeMap<String, String>,
     fit_next: bool,
     dark: bool,
+    prefs: Prefs,
+    remote: RemoteMcp,
+    diagram_font: String,
+    update: Option<odg_core::update::UpdateInfo>,
 }
 
 impl State {
@@ -80,6 +90,10 @@ struct Ui {
     new_button: gtk::Button,
     export_button: gtk::MenuButton,
     mcp_button: gtk::MenuButton,
+    update_button: gtk::Button,
+    settings_button: gtk::Button,
+    toast: adw::ToastOverlay,
+    editor_css: gtk::CssProvider,
     state: Rc<RefCell<State>>,
 }
 
@@ -90,12 +104,9 @@ fn main() -> glib::ExitCode {
     app.run_with_args(&[] as &[&str])
 }
 
-fn initial_lang() -> Lang {
-    Lang::from_env()
-}
-
 fn build_ui(app: &adw::Application, args: &[String]) {
-    let lang = initial_lang();
+    let prefs = Prefs::load();
+    let lang = prefs.language.as_deref().map(Lang::parse).unwrap_or_else(Lang::from_env);
     let state = Rc::new(RefCell::new(State {
         ws: None,
         lang,
@@ -116,6 +127,10 @@ fn build_ui(app: &adw::Application, args: &[String]) {
         modified: BTreeMap::new(),
         fit_next: true,
         dark: adw::StyleManager::default().is_dark(),
+        prefs,
+        remote: RemoteMcp::default(),
+        diagram_font: String::new(),
+        update: None,
     }));
 
     // ---- header
@@ -123,15 +138,18 @@ fn build_ui(app: &adw::Application, args: &[String]) {
     let header = adw::HeaderBar::builder().title_widget(&title).build();
     let open_button = gtk::Button::from_icon_name("folder-open-symbolic");
     let new_button = gtk::Button::from_icon_name("document-new-symbolic");
-    let export_button = gtk::MenuButton::builder().icon_name("document-save-as-symbolic").build();
-    let mcp_button = gtk::MenuButton::builder().icon_name("network-server-symbolic").build();
-    let lang_drop = gtk::DropDown::from_strings(&["English", "Português"]);
-    lang_drop.set_selected(if lang == Lang::PtBr { 1 } else { 0 });
+    let export_button = gtk::MenuButton::builder()
+        .icon_name(themed_icon(&["document-export-symbolic", "document-send-symbolic", "document-save-as-symbolic"]))
+        .build();
+    let mcp_button = gtk::MenuButton::builder().child(&client_icon("mcp")).build();
+    let update_button = gtk::Button::builder().icon_name("software-update-available-symbolic").css_classes(["suggested-action"]).visible(false).build();
+    let settings_button = gtk::Button::from_icon_name("emblem-system-symbolic");
     header.pack_start(&open_button);
     header.pack_start(&new_button);
-    header.pack_end(&lang_drop);
+    header.pack_start(&export_button);
+    header.pack_end(&settings_button);
+    header.pack_end(&update_button);
     header.pack_end(&mcp_button);
-    header.pack_end(&export_button);
 
     // ---- sidebar
     let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::Single).css_classes(["navigation-sidebar"]).build();
@@ -146,6 +164,11 @@ fn build_ui(app: &adw::Application, args: &[String]) {
     editor.set_highlight_current_line(true);
     editor.set_monospace(true);
     editor.set_top_margin(6);
+    editor.add_css_class("odg-editor");
+    let editor_css = gtk::CssProvider::new();
+    if let Some(display) = gdk::Display::default() {
+        gtk::style_context_add_provider_for_display(&display, &editor_css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+    }
     let editor_scroll = gtk::ScrolledWindow::builder().child(&editor).vexpand(true).hexpand(true).build();
     let agent_badge = gtk::Label::builder().css_classes(["accent", "caption"]).halign(gtk::Align::End).visible(false).build();
     let editor_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -193,7 +216,9 @@ fn build_ui(app: &adw::Application, args: &[String]) {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.append(&header);
     content.append(&main_paned);
-    let window = adw::ApplicationWindow::builder().application(app).default_width(1280).default_height(820).content(&content).build();
+    let toast = adw::ToastOverlay::new();
+    toast.set_child(Some(&content));
+    let window = adw::ApplicationWindow::builder().application(app).default_width(1280).default_height(820).content(&toast).build();
 
     let ui = Ui {
         window,
@@ -214,10 +239,16 @@ fn build_ui(app: &adw::Application, args: &[String]) {
         new_button,
         export_button,
         mcp_button,
+        update_button,
+        settings_button,
+        toast,
+        editor_css,
         state,
     };
+    apply_appearance(&ui);
+    apply_editor_font(&ui);
     apply_strings(&ui);
-    wire(&ui, &ucm, &lang_drop);
+    wire(&ui, &ucm);
 
     // workspace from args / URL / last session
     let mut ws_arg: Option<PathBuf> = None;
@@ -232,7 +263,7 @@ fn build_ui(app: &adw::Application, args: &[String]) {
             open_path = p;
         }
     }
-    let ws_arg = ws_arg.or_else(|| std::fs::read_to_string(last_workspace_file()).ok().map(|s| PathBuf::from(s.trim())));
+    let ws_arg = ws_arg.or_else(|| ui.state.borrow().prefs.last_workspace.clone().map(PathBuf::from));
     if let Some(dir) = ws_arg.filter(|d| d.is_dir()) {
         open_workspace(&ui, dir);
         if let Some(p) = open_path {
@@ -246,10 +277,14 @@ fn build_ui(app: &adw::Application, args: &[String]) {
         glib::ControlFlow::Continue
     });
     ui.window.present();
-}
 
-fn last_workspace_file() -> PathBuf {
-    glib::user_config_dir().join("odiagramador").join("last-workspace")
+    let due = {
+        let p = &ui.state.borrow().prefs;
+        p.auto_update && prefs::now() - p.last_update_check > 24 * 3600
+    };
+    if due {
+        check_updates(&ui, false);
+    }
 }
 
 fn parse_open_url(url: &str) -> (Option<String>, Option<String>) {
@@ -288,8 +323,9 @@ fn apply_strings(ui: &Ui) {
     let s = ui.state.borrow();
     ui.open_button.set_tooltip_text(Some(&s.t("ui-open-folder")));
     ui.new_button.set_tooltip_text(Some(&s.t("ui-new-diagram")));
-    ui.export_button.set_tooltip_text(Some(&s.t("ui-export-png")));
-    ui.mcp_button.set_tooltip_text(Some(&s.t("ui-copy-mcp-config")));
+    ui.export_button.set_tooltip_text(Some(&s.t("ui-export")));
+    ui.mcp_button.set_tooltip_text(Some(&s.t("ui-mcp-configure")));
+    ui.settings_button.set_tooltip_text(Some(&s.t("ui-settings")));
     ui.feedback_button.set_label(&s.t("ui-add-feedback"));
     ui.feedback_entry.set_placeholder_text(Some(&s.t("ui-feedback-placeholder")));
     ui.agent_badge.set_label(&format!("✦ {}", s.t("ui-changed-by-agent")));
@@ -298,15 +334,21 @@ fn apply_strings(ui: &Ui) {
             ui.notebook.set_tab_label_text(&page, &s.t(key));
         }
     }
-    let export = gio::Menu::new();
-    export.append(Some(&s.t("ui-export-png")), Some("win.export-png"));
-    export.append(Some(&s.t("ui-export-svg")), Some("win.export-svg"));
-    ui.export_button.set_menu_model(Some(&export));
-    let mcp = gio::Menu::new();
-    mcp.append(Some("Claude Code"), Some("win.mcp-claude"));
-    mcp.append(Some("Codex"), Some("win.mcp-codex"));
-    mcp.append(Some("JSON"), Some("win.mcp-json"));
-    ui.mcp_button.set_menu_model(Some(&mcp));
+    let (u1, u2) = (ui.clone(), ui.clone());
+    ui.export_button.set_popover(Some(&icon_popover(vec![
+        MenuEntry::new(gtk::Image::from_icon_name("image-x-generic-symbolic"), "PNG", move || export(&u1, true)),
+        MenuEntry::new(gtk::Image::from_icon_name(&themed_icon(&["x-office-drawing-symbolic", "image-x-generic-symbolic"])), "SVG", move || export(&u2, false)),
+    ])));
+    let mut mcp = vec![MenuEntry::heading(s.t("ui-mcp-copy-for"))];
+    for (id, name) in MCP_CLIENTS.iter().copied().chain(std::iter::once(("json", ""))) {
+        let u = ui.clone();
+        let label = if id == "json" { s.t("ui-mcp-other") } else { name.to_string() };
+        mcp.push(MenuEntry::new(client_icon(id), label, move || copy_mcp_config(&u, id, false)));
+    }
+    mcp.push(MenuEntry::separator());
+    let u = ui.clone();
+    mcp.push(MenuEntry::new(gtk::Image::from_icon_name("emblem-system-symbolic"), s.t("ui-mcp-settings"), move || settings::show_preferences(&u, "mcp")));
+    ui.mcp_button.set_popover(Some(&icon_popover(mcp)));
     drop(s);
     let all = ui.state.borrow().strings.clone();
     send(ui, json!({"op": "strings", "strings": all}));
@@ -314,7 +356,7 @@ fn apply_strings(ui: &Ui) {
 
 // ------------------------------------------------------------------ wiring
 
-fn wire(ui: &Ui, ucm: &webkit::UserContentManager, lang_drop: &gtk::DropDown) {
+fn wire(ui: &Ui, ucm: &webkit::UserContentManager) {
     let u = ui.clone();
     ucm.connect_script_message_received(Some("odg"), move |_, value| {
         if let Ok(msg) = serde_json::from_str::<Value>(&value.to_str()) {
@@ -396,43 +438,25 @@ fn wire(ui: &Ui, ucm: &webkit::UserContentManager, lang_drop: &gtk::DropDown) {
     });
 
     let u = ui.clone();
-    lang_drop.connect_selected_notify(move |d| {
-        let lang = if d.selected() == 1 { Lang::PtBr } else { Lang::En };
-        {
-            let mut s = u.state.borrow_mut();
-            s.lang = lang;
-            s.strings = i18n::all_strings(lang);
-            if let Some(ws) = &s.ws {
-                let mut cfg = ws.config();
-                cfg.lang = Some(lang.code().into());
-                let _ = ws.set_config(&cfg);
-            }
-        }
-        apply_strings(&u);
-        render(&u);
-        refresh_side(&u);
+    ui.settings_button.connect_clicked(move |_| settings::show_preferences(&u, "general"));
+    let u = ui.clone();
+    ui.update_button.connect_clicked(move |_| show_update(&u));
+    let u = ui.clone();
+    ui.window.connect_close_request(move |_| {
+        flush_save(&u);
+        let mut s = u.state.borrow_mut();
+        s.remote.stop();
+        s.prefs.save();
+        glib::Propagation::Proceed
     });
 
     let u = ui.clone();
     adw::StyleManager::default().connect_dark_notify(move |sm| {
         u.state.borrow_mut().dark = sm.is_dark();
         send(&u, json!({"op": "theme", "theme": if sm.is_dark() { "dark" } else { "light" }}));
+        apply_strings(&u); // monochrome brand marks follow the style
         render(&u);
     });
-
-    // window actions for the menus
-    for (name, png) in [("export-png", true), ("export-svg", false)] {
-        let u = ui.clone();
-        let action = gio::SimpleAction::new(name, None);
-        action.connect_activate(move |_, _| export(&u, png));
-        ui.window.add_action(&action);
-    }
-    for (name, kind) in [("mcp-claude", "claude"), ("mcp-codex", "codex"), ("mcp-json", "json")] {
-        let u = ui.clone();
-        let action = gio::SimpleAction::new(name, None);
-        action.connect_activate(move |_, _| copy_mcp_config(&u, kind));
-        ui.window.add_action(&action);
-    }
 }
 
 // ------------------------------------------------------------------ viewer bridge
@@ -536,17 +560,17 @@ fn set_buffer(ui: &Ui, text: &str) {
 
 fn render(ui: &Ui) {
     let text = buffer_text(ui);
-    let (seq, dark, has) = {
+    let (seq, dark, has, font) = {
         let mut s = ui.state.borrow_mut();
         s.render_seq += 1;
         s.render_source = text.clone();
-        (s.render_seq, s.dark, s.selected.is_some())
+        (s.render_seq, s.dark, s.selected.is_some(), s.diagram_font.clone())
     };
     if !has {
         send(ui, json!({"op": "process", "id": 0, "source": ""}));
         return;
     }
-    send(ui, json!({"op": "process", "id": seq, "source": text, "theme": if dark { "dark" } else { "default" }, "png": true, "scale": 2}));
+    send(ui, json!({"op": "process", "id": seq, "source": text, "theme": if dark { "dark" } else { "default" }, "png": true, "scale": 2, "font": font}));
 }
 
 fn render_finished(ui: &Ui, id: u64, result: Value) {
@@ -665,15 +689,16 @@ fn scroll_to_line(ui: &Ui, line: u32) {
 
 fn open_workspace(ui: &Ui, dir: PathBuf) {
     let Ok(ws) = Workspace::open(&dir) else { return };
-    if let Some(parent) = last_workspace_file().parent() {
-        let _ = std::fs::create_dir_all(parent);
-        let _ = std::fs::write(last_workspace_file(), ws.root().to_string_lossy().as_bytes());
-    }
-    if let Some(l) = ws.config().lang {
-        let lang = Lang::parse(&l);
+    let config = ws.config();
+    {
         let mut s = ui.state.borrow_mut();
-        s.lang = lang;
-        s.strings = i18n::all_strings(lang);
+        s.prefs.last_workspace = Some(ws.root().to_string_lossy().to_string());
+        s.prefs.save();
+        s.diagram_font = config.font.clone().unwrap_or_default();
+        if let Some(l) = &config.lang {
+            s.lang = Lang::parse(l);
+            s.strings = i18n::all_strings(s.lang);
+        }
     }
     ui.title.set_subtitle(&ws.root().to_string_lossy());
     {
@@ -683,6 +708,7 @@ fn open_workspace(ui: &Ui, dir: PathBuf) {
         s.modified.clear();
     }
     apply_strings(ui);
+    restart_remote(ui);
     refresh_list(ui);
     let first = ui.state.borrow().diagrams.first().map(|d| d.path.clone());
     select(ui, first);
@@ -846,6 +872,7 @@ fn flush_save(ui: &Ui) {
 }
 
 fn poll(ui: &Ui) {
+    ui.state.borrow_mut().remote.poll();
     let (list, selected) = {
         let s = ui.state.borrow();
         let Some(ws) = &s.ws else { return };
@@ -953,18 +980,146 @@ fn export(ui: &Ui, png: bool) {
     });
 }
 
-fn copy_mcp_config(ui: &Ui, kind: &str) {
+pub(crate) fn copy_mcp_config(ui: &Ui, client: &str, remote: bool) {
     let s = ui.state.borrow();
-    let Some(ws) = &s.ws else { return };
-    let exe = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("odg"))).filter(|p| p.exists());
-    let exe = exe.map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|| "odg".into());
-    let w = ws.root().to_string_lossy().to_string();
-    let text = match kind {
-        "claude" => format!("claude mcp add odiagramador -- \"{exe}\" mcp --workspace \"{w}\""),
-        "codex" => format!("[mcp_servers.odiagramador]\ncommand = {exe:?}\nargs = [\"mcp\", \"--workspace\", {w:?}]"),
-        _ => serde_json::to_string_pretty(&json!({"mcpServers": {"odiagramador": {"command": exe, "args": ["mcp", "--workspace", w]}}})).unwrap(),
+    let Some(ws) = &s.ws else {
+        ui.toast.add_toast(adw::Toast::new(&s.t("ui-no-workspace")));
+        return;
     };
-    if let Some(display) = gdk::Display::default() {
-        display.clipboard().set_text(&text);
+    let w = ws.root().to_string_lossy().to_string();
+    let url = remote.then(|| RemoteMcp::url(&s.prefs));
+    let token = remote.then_some(s.prefs.mcp_token.as_str());
+    let all = odg_core::mcp_config::snippets(&prefs::odg_exe(), &w, url.as_deref(), token);
+    let text = odg_core::mcp_config::snippet_for(&all, client, remote);
+    let name = MCP_CLIENTS.iter().find(|(id, _)| *id == client).map(|(_, n)| n.to_string()).unwrap_or_else(|| s.t("ui-mcp-other"));
+    match gdk::Display::default() {
+        Some(display) => {
+            display.clipboard().set_text(&text);
+            ui.toast.add_toast(adw::Toast::new(&i18n::t(s.lang, "ui-mcp-copied", &[("app", name.as_str().into())])));
+        }
+        None => {
+            let dialog = adw::MessageDialog::new(Some(&ui.window), Some("MCP"), Some(&s.t("ui-mcp-copy-failed")));
+            let view = gtk::TextView::builder().editable(false).monospace(true).wrap_mode(gtk::WrapMode::WordChar).build();
+            view.buffer().set_text(&text);
+            dialog.set_extra_child(Some(&view));
+            dialog.add_response("ok", "OK");
+            dialog.present();
+        }
     }
+}
+
+// ------------------------------------------------------------------ settings, appearance, updates
+
+pub(crate) fn set_language(ui: &Ui, lang: Lang) {
+    {
+        let mut s = ui.state.borrow_mut();
+        if s.lang == lang {
+            return;
+        }
+        s.lang = lang;
+        s.strings = i18n::all_strings(lang);
+        s.prefs.language = Some(lang.code().into());
+        s.prefs.save();
+        if let Some(ws) = &s.ws {
+            let mut cfg = ws.config();
+            cfg.lang = Some(lang.code().into());
+            let _ = ws.set_config(&cfg);
+        }
+    }
+    apply_strings(ui);
+    render(ui);
+    refresh_side(ui);
+}
+
+pub(crate) fn apply_appearance(ui: &Ui) {
+    let scheme = match ui.state.borrow().prefs.appearance.as_str() {
+        "dark" => adw::ColorScheme::ForceDark,
+        "light" => adw::ColorScheme::ForceLight,
+        _ => adw::ColorScheme::Default,
+    };
+    ui.state.borrow().prefs.save();
+    adw::StyleManager::default().set_color_scheme(scheme);
+}
+
+pub(crate) fn apply_editor_font(ui: &Ui) {
+    let font = ui.state.borrow().prefs.editor_font.clone();
+    ui.state.borrow().prefs.save();
+    let css = if font.is_empty() {
+        String::new()
+    } else {
+        let desc = gtk::pango::FontDescription::from_string(&font);
+        let family = desc.family().map(|f| f.to_string()).unwrap_or_else(|| "monospace".into());
+        let size = if desc.size() > 0 { desc.size() as f64 / gtk::pango::SCALE as f64 } else { 11.0 };
+        format!("textview.odg-editor {{ font-family: \"{}\", monospace; font-size: {size}pt; }}", family.replace('"', ""))
+    };
+    ui.editor_css.load_from_string(&css);
+}
+
+pub(crate) fn set_diagram_font(ui: &Ui, font: &str) {
+    {
+        let mut s = ui.state.borrow_mut();
+        s.diagram_font = font.to_string();
+        if let Some(ws) = &s.ws {
+            let mut cfg = ws.config();
+            cfg.font = (!font.is_empty()).then(|| font.to_string());
+            let _ = ws.set_config(&cfg);
+        }
+    }
+    render(ui);
+}
+
+pub(crate) fn restart_remote(ui: &Ui) {
+    let mut s = ui.state.borrow_mut();
+    s.prefs.save();
+    let ws = s.ws.as_ref().map(|w| w.root().to_path_buf());
+    let prefs = s.prefs.clone();
+    s.remote.restart(&prefs, ws.as_deref());
+}
+
+pub(crate) fn check_updates(ui: &Ui, user_initiated: bool) {
+    let u = ui.clone();
+    prefs::check_updates(move |result| {
+        let lang = u.state.borrow().lang;
+        match result {
+            Ok(info) => {
+                {
+                    let mut s = u.state.borrow_mut();
+                    s.prefs.last_update_check = prefs::now();
+                    s.prefs.save();
+                    s.update = info.available.then(|| info.clone());
+                }
+                u.update_button.set_visible(info.available);
+                if info.available {
+                    let text = i18n::t(lang, "ui-update-available", &[("version", info.latest.as_str().into()), ("current", info.current.as_str().into())]);
+                    u.update_button.set_tooltip_text(Some(&text));
+                    show_update(&u);
+                } else if user_initiated {
+                    u.toast.add_toast(adw::Toast::new(&i18n::t(lang, "ui-up-to-date", &[("version", odg_core::VERSION.into())])));
+                }
+            }
+            Err(e) if user_initiated => {
+                u.toast.add_toast(adw::Toast::new(&i18n::t(lang, "ui-update-failed", &[("detail", e.as_str().into())])));
+            }
+            Err(_) => {}
+        }
+    });
+}
+
+/// Linux builds come from source or distro packages: offer the release page instead of replacing files.
+fn show_update(ui: &Ui) {
+    let s = ui.state.borrow();
+    let Some(info) = s.update.clone() else { return };
+    let heading = i18n::t(s.lang, "ui-update-available", &[("version", info.latest.as_str().into()), ("current", info.current.as_str().into())]);
+    let dialog = adw::MessageDialog::new(Some(&ui.window), Some(&heading), Some(&info.notes));
+    dialog.add_response("later", &s.t("ui-update-later"));
+    dialog.add_response("page", &s.t("ui-update-release-page"));
+    dialog.set_response_appearance("page", adw::ResponseAppearance::Suggested);
+    dialog.set_default_response(Some("page"));
+    let (window, url) = (ui.window.clone(), info.page_url.clone());
+    dialog.connect_response(None, move |_, response| {
+        if response == "page" {
+            gtk::UriLauncher::new(&url).launch(Some(&window), gio::Cancellable::NONE, |_| {});
+        }
+    });
+    dialog.present();
 }

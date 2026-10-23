@@ -21,11 +21,13 @@ pub struct AnalyzeOptions {
     pub annotated: bool,
     pub scale: f64,
     pub lint: LintConfig,
+    /// Diagram font family (workspace setting); None = default.
+    pub font: Option<String>,
 }
 
 impl Default for AnalyzeOptions {
     fn default() -> Self {
-        AnalyzeOptions { lang: Lang::En, theme: "default".into(), png: true, annotated: true, scale: 2.0, lint: LintConfig::default() }
+        AnalyzeOptions { lang: Lang::En, theme: "default".into(), png: true, annotated: true, scale: 2.0, lint: LintConfig::default(), font: None }
     }
 }
 
@@ -125,6 +127,7 @@ pub fn analyze(engine: &dyn DiagramEngine, src: &str, backend: &dyn RenderBacken
         png: opts.png,
         scale: opts.scale,
         background: None,
+        font: opts.font.clone(),
     };
     let raw = match backend.process(&req) {
         Ok(r) => r,

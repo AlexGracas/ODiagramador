@@ -6,7 +6,8 @@
  *   odg_free(r);
  *
  * Methods (args are a JSON object):
- *   version                                             -> {version, mermaid}
+ *   version                                             -> {version, mermaid, releases_api, releases_page}
+ *   update_evaluate  {release_json, current, platform}  -> {available, latest, asset_url, page_url, notes...}
  *   strings          {lang}                             -> {key: text}   (all UI strings)
  *   t                {lang, key, args?}                 -> string
  *   analyze          {source, raw, lang?, workspace?, path?, save?, log?, actor?} -> Report
@@ -33,8 +34,9 @@
  *   add_feedback     {workspace, path, text, element_id?, line?, author?} -> Feedback
  *   resolve_feedback {workspace, id, resolution?, actor?} -> Feedback
  *   config           {workspace}                        -> {lang?, theme?}
- *   set_config       {workspace, lang?, theme?}
- *   mcp_config       {odg_path, workspace}              -> {json, claude_code, codex}
+ *   set_config       {workspace, lang?, theme?, font?}   (merges; "" clears)
+ *   mcp_config       {odg_path, workspace, url?, token?} -> {json, claude_code, codex,
+ *                                                          remote_json?, remote_claude_code?, remote_codex?}
  */
 #ifndef ODG_FFI_H
 #define ODG_FFI_H

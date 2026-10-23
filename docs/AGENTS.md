@@ -35,6 +35,20 @@ args = ["mcp", "--workspace", "/path/to/project"]
 Options: `--lang pt-BR` (or `en`) for message language; default comes from `.odiagramador/config.json`, then `$LANG`.
 On a Linux server without a display run `xvfb-run -a odg mcp …` (the renderer uses the system WebKit).
 
+### Remote (HTTP) access
+
+`odg mcp --workspace DIR --http 127.0.0.1:7410` serves MCP over Streamable HTTP at `http://127.0.0.1:7410/mcp`
+(JSON responses, `Mcp-Session-Id` on initialize, `GET /health`). To listen on the network (`--http 0.0.0.0:7410`)
+a bearer token is **required** — pass `--token` or set `ODG_MCP_TOKEN`; odg refuses to start without it.
+Clients then send `Authorization: Bearer <token>`:
+
+```bash
+claude mcp add --transport http odiagramador http://HOST:7410/mcp --header "Authorization: Bearer TOKEN"
+```
+
+The desktop apps can run this for you: **Settings → MCP → Remote access** (port, local-only or LAN, token) and
+copy ready-made configs for each client. Traffic is plain HTTP: outside a trusted LAN use an SSH tunnel or a VPN.
+
 ## 2. Tools
 
 | Tool | Use it to |

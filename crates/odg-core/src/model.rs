@@ -159,11 +159,14 @@ pub struct ProcessRequest {
     pub scale: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background: Option<String>,
+    /// Diagram font family (CSS font-family list); None = Arial / Liberation Sans.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<String>,
 }
 
 impl ProcessRequest {
     pub fn new(source: impl Into<String>) -> Self {
-        ProcessRequest { source: source.into(), theme: "default".into(), png: true, scale: 2.0, background: None }
+        ProcessRequest { source: source.into(), theme: "default".into(), png: true, scale: 2.0, background: None, font: None }
     }
 }
 

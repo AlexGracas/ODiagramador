@@ -35,33 +35,58 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _renderDebounce = new() { Interval = TimeSpan.FromMilliseconds(300) };
     private readonly DispatcherTimer _saveDebounce = new() { Interval = TimeSpan.FromMilliseconds(900) };
     private readonly LineTint _tint = new();
+    internal readonly Preferences Prefs = App.Prefs;
+    internal readonly RemoteMcp Remote;
+    internal readonly Updater Updates = new();
+    private string _diagramFont = "";
+    private readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(2.5) };
 
-    private static readonly string Settings = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ODiagramador", "last-workspace");
+    internal static readonly (string Id, string Name)[] McpClients =
+    {
+        ("claude-code", "Claude Code"), ("codex", "Codex"), ("cursor", "Cursor"), ("claude-desktop", "Claude Desktop"),
+    };
 
     public MainWindow()
     {
         InitializeComponent();
+        Remote = new RemoteMcp(Prefs);
+        _lang = Prefs.Language ?? _lang;
         Editor.TextArea.TextView.BackgroundRenderers.Add(_tint);
+        McpIcon.Content = BrandIcons.Create("modelcontextprotocol") ?? BrandIcons.Glyph("\uE8F1");
+        _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); Toast.Visibility = Visibility.Collapsed; };
+        SystemEvents.UserPreferenceChanged += OnSystemPreferenceChanged;
+        Closed += (_, _) => SystemEvents.UserPreferenceChanged -= OnSystemPreferenceChanged;
+        ApplyEditorAppearance();
         _poll.Tick += (_, _) => Poll();
         _renderDebounce.Tick += (_, _) => { _renderDebounce.Stop(); Render(); };
         _saveDebounce.Tick += (_, _) => { _saveDebounce.Stop(); FlushSave(); };
-        LanguageBox.SelectedIndex = _lang == "pt-BR" ? 1 : 0;
         LoadStrings();
         Loaded += async (_, _) => await InitAsync();
-        Closing += (_, _) => FlushSave();
+        Closing += (_, _) =>
+        {
+            FlushSave();
+            Remote.Stop();
+            Prefs.Save();
+        };
     }
 
-    private string T(string key) => _strings.TryGetValue(key, out var v) ? v : key;
+    internal string T(string key) => _strings.TryGetValue(key, out var v) ? v : key;
+
+    /// <summary>Translation with Fluent arguments ({ $name }).</summary>
+    internal string T(string key, object args) =>
+        Core.CallOrDefault<string>("t", new { lang = _lang, key, args }) ?? key;
+
+    internal string Lang => _lang;
 
     private void LoadStrings()
     {
         _strings = Core.CallOrDefault<Dictionary<string, string>>("strings", new { lang = _lang }) ?? new();
-        OpenButton.Content = T("ui-open-folder");
-        NewButton.Content = T("ui-new-diagram");
-        ExportPngButton.Content = T("ui-export-png");
-        ExportSvgButton.Content = T("ui-export-svg");
-        McpMenu.Header = T("ui-copy-mcp-config");
+        OpenButton.ToolTip = T("ui-open-folder");
+        NewButton.ToolTip = T("ui-new-diagram");
+        ExportButton.ToolTip = T("ui-export");
+        McpButton.ToolTip = T("ui-mcp-configure");
+        SettingsButton.ToolTip = T("ui-settings");
+        BuildMcpMenu();
         DiagramsHeader.Text = T("ui-diagrams").ToUpperInvariant();
         ProblemsTab.Header = $"{T("ui-problems")} ({_report?.Problems.Count ?? 0})";
         FeedbackTab.Header = T("ui-feedback");
@@ -93,10 +118,222 @@ public partial class MainWindow : Window
             if (App.Args[i] == "--workspace" && i + 1 < App.Args.Length) ws = App.Args[++i];
             else if (App.Args[i].StartsWith("odiagramador://")) (ws, open) = ParseOpenUrl(App.Args[i], ws);
         }
-        ws ??= File.Exists(Settings) ? File.ReadAllText(Settings).Trim() : null;
+        ws ??= Prefs.LastWorkspace;
         if (ws is not null && Directory.Exists(ws)) OpenWorkspace(ws);
         if (open is not null) Select(open);
         _poll.Start();
+        if (Prefs.AutoUpdate && DateTime.UtcNow - Prefs.LastUpdateCheck > TimeSpan.FromHours(24))
+            await CheckForUpdatesAsync(userInitiated: false);
+    }
+
+    // ------------------------------------------------------------------ menus, MCP, updates
+
+    private void OnOpenMenu(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { ContextMenu: { } menu } button) return;
+        menu.PlacementTarget = button;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.IsOpen = true;
+    }
+
+    private void BuildMcpMenu()
+    {
+        McpMenu.Items.Clear();
+        McpMenu.Items.Add(new MenuItem { Header = T("ui-mcp-copy-for"), IsEnabled = false });
+        foreach (var (id, name) in McpClients)
+        {
+            var item = new MenuItem { Header = name, Icon = BrandIcons.ForClient(id), Tag = id };
+            item.Click += (_, _) => CopyMcp(id, remote: false);
+            McpMenu.Items.Add(item);
+        }
+        var other = new MenuItem { Header = T("ui-mcp-other"), Icon = BrandIcons.ForClient("json") };
+        other.Click += (_, _) => CopyMcp("json", remote: false);
+        McpMenu.Items.Add(other);
+        McpMenu.Items.Add(new Separator());
+        var settings = new MenuItem { Header = T("ui-mcp-settings"), Icon = BrandIcons.Glyph("\uE713") };
+        settings.Click += (_, _) => OpenSettings("mcp");
+        McpMenu.Items.Add(settings);
+    }
+
+    /// <summary>Copies the MCP configuration for a client; falls back to a dialog when the clipboard is busy.</summary>
+    internal void CopyMcp(string client, bool remote)
+    {
+        if (_workspace is null)
+        {
+            ShowToast(T("ui-no-workspace"));
+            return;
+        }
+        string text;
+        try
+        {
+            var args = new JsonObject { ["odg_path"] = Path.Combine(AppContext.BaseDirectory, "odg.exe"), ["workspace"] = _workspace };
+            if (remote)
+            {
+                args["url"] = Remote.Url;
+                args["token"] = Prefs.McpToken;
+            }
+            var cfg = Core.CallNode<McpConfig>("mcp_config", args);
+            text = (client, remote) switch
+            {
+                ("claude-code", false) => cfg.ClaudeCode,
+                ("codex", false) => cfg.Codex,
+                ("claude-code", true) => cfg.RemoteClaudeCode ?? cfg.ClaudeCode,
+                ("codex", true) => cfg.RemoteCodex ?? cfg.Codex,
+                (_, true) => cfg.RemoteJson ?? cfg.Json,
+                _ => cfg.Json,
+            };
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "ODiagramador", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        var name = McpClients.FirstOrDefault(c => c.Id == client).Name ?? T("ui-mcp-other");
+        if (TrySetClipboard(text)) ShowToast(T("ui-mcp-copied", new { app = name }));
+        else Prompt.ShowText(this, "MCP", T("ui-mcp-copy-failed"), text);
+    }
+
+    /// <summary>The Windows clipboard is often locked briefly by other apps: retry instead of failing.</summary>
+    private static bool TrySetClipboard(string text)
+    {
+        for (var i = 0; i < 10; i++)
+        {
+            try
+            {
+                Clipboard.SetDataObject(text, true);
+                return true;
+            }
+            catch (System.Runtime.InteropServices.ExternalException)
+            {
+                Thread.Sleep(60);
+            }
+        }
+        return false;
+    }
+
+    internal void ShowToast(string text)
+    {
+        ToastText.Text = "✓  " + text;
+        Toast.Visibility = Visibility.Visible;
+        _toastTimer.Stop();
+        _toastTimer.Start();
+    }
+
+    private void OnSettings(object sender, RoutedEventArgs e) => OpenSettings("general");
+
+    private SettingsWindow? _settings;
+
+    internal void OpenSettings(string tab)
+    {
+        if (_settings is { IsLoaded: true })
+        {
+            _settings.SelectTab(tab);
+            _settings.Activate();
+            return;
+        }
+        _settings = new SettingsWindow(this, tab) { Owner = this };
+        _settings.Show();
+    }
+
+    internal async Task CheckForUpdatesAsync(bool userInitiated)
+    {
+        try
+        {
+            var info = await Updates.CheckAsync();
+            Prefs.LastUpdateCheck = DateTime.UtcNow;
+            Prefs.Save();
+            UpdateButton.Visibility = Updates.Available is null ? Visibility.Collapsed : Visibility.Visible;
+            if (Updates.Available is not null)
+            {
+                UpdateButton.ToolTip = T("ui-update-available", new { version = info!.Latest, current = info.Current });
+                if (!userInitiated && Prefs.AutoInstallUpdates) await InstallUpdateAsync();
+                else ShowUpdateDialog();
+            }
+            else if (userInitiated)
+            {
+                MessageBox.Show(this, T("ui-up-to-date", new { version = Updater.CurrentVersion }), "ODiagramador");
+            }
+        }
+        catch (Exception ex)
+        {
+            if (userInitiated) MessageBox.Show(this, T("ui-update-failed", new { detail = ex.Message }), "ODiagramador");
+        }
+    }
+
+    private void OnShowUpdate(object sender, RoutedEventArgs e) => ShowUpdateDialog();
+
+    private void ShowUpdateDialog()
+    {
+        var info = Updates.Available;
+        if (info is null) return;
+        var choice = Prompt.Update(this, T("ui-update-available", new { version = info.Latest, current = info.Current }), info.Notes,
+            T("ui-update-now"), T("ui-update-later"), T("ui-update-release-page"));
+        if (choice == "install") _ = InstallUpdateAsync();
+        else if (choice == "page") System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(info.PageUrl) { UseShellExecute = true });
+    }
+
+    private async Task InstallUpdateAsync()
+    {
+        try
+        {
+            ShowToast(T("ui-updating"));
+            FlushSave();
+            Remote.Stop();
+            await Updates.InstallAsync(_ => ShowToast(T("ui-update-restart")));
+        }
+        catch (UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, T("ui-update-manual"), "ODiagramador");
+            if (Updates.Available is { } info)
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(info.PageUrl) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, T("ui-update-failed", new { detail = ex.Message }), "ODiagramador");
+        }
+    }
+
+    // ------------------------------------------------------------------ appearance & fonts
+
+    internal void ApplyEditorAppearance()
+    {
+        var dark = Prefs.IsDark;
+        App.ApplyTheme(Prefs);
+        Editor.FontFamily = new FontFamily(Prefs.EditorFont + ", Cascadia Mono, Consolas");
+        Editor.FontSize = Prefs.EditorFontSize;
+        Editor.Background = dark ? new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E)) : Brushes.White;
+        Editor.Foreground = dark ? new SolidColorBrush(Color.FromRgb(0xD4, 0xD4, 0xD4)) : Brushes.Black;
+        Editor.LineNumbersForeground = dark ? Brushes.Gray : Brushes.DimGray;
+        Send(new JsonObject { ["op"] = "theme", ["theme"] = dark ? "dark" : "light" });
+        Render();
+    }
+
+    private void OnSystemPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category == UserPreferenceCategory.General && Prefs.Appearance == "system")
+            Dispatcher.BeginInvoke(ApplyEditorAppearance);
+    }
+
+    internal string DiagramFont
+    {
+        get => _diagramFont;
+        set
+        {
+            _diagramFont = value;
+            if (_workspace is not null) Core.Run("set_config", new { workspace = _workspace, font = value });
+            Render();
+        }
+    }
+
+    internal void SetLanguage(string lang)
+    {
+        if (lang == _lang) return;
+        _lang = lang;
+        Prefs.Language = lang;
+        Prefs.Save();
+        if (_workspace is not null) Core.Run("set_config", new { workspace = _workspace, lang });
+        LoadStrings();
+        Render();
     }
 
     private static (string?, string?) ParseOpenUrl(string url, string? ws)
@@ -215,7 +452,7 @@ public partial class MainWindow : Window
         Send(new JsonObject
         {
             ["op"] = "process", ["id"] = _renderSeq, ["source"] = _renderSource,
-            ["theme"] = "default", ["png"] = true, ["scale"] = 2,
+            ["theme"] = Prefs.IsDark ? "dark" : "default", ["png"] = true, ["scale"] = 2, ["font"] = _diagramFont,
         });
     }
 
@@ -264,14 +501,14 @@ public partial class MainWindow : Window
     private void OpenWorkspace(string dir)
     {
         _workspace = Path.GetFullPath(dir);
-        Directory.CreateDirectory(Path.GetDirectoryName(Settings)!);
-        File.WriteAllText(Settings, _workspace);
-        if (Core.CallOrDefault<WorkspaceConfig>("config", new { workspace = _workspace })?.Lang is string l && l != _lang)
-        {
-            _lang = l;
-            LanguageBox.SelectedIndex = l == "pt-BR" ? 1 : 0;
-        }
+        Prefs.LastWorkspace = _workspace;
+        Prefs.Save();
+        var cfg = Core.CallOrDefault<WorkspaceConfig>("config", new { workspace = _workspace });
+        if (cfg?.Lang is string l && l != _lang) _lang = l;
+        _diagramFont = cfg?.Font ?? "";
+        Remote.Configure(_workspace, Path.Combine(AppContext.BaseDirectory, "odg.exe"));
         Title = $"ODiagramador — {_workspace}";
+        TitleText.Text = _workspace;
         _modified.Clear();
         _selected = null;
         RefreshList();
@@ -461,15 +698,6 @@ public partial class MainWindow : Window
         RefreshList();
     }
 
-    private void OnLanguageChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if ((LanguageBox.SelectedItem as ComboBoxItem)?.Tag is not string lang || lang == _lang) return;
-        _lang = lang;
-        if (_workspace is not null) Core.Run("set_config", new { workspace = _workspace, lang });
-        LoadStrings();
-        Render();
-    }
-
     private void OnExportPng(object sender, RoutedEventArgs e) => Export(png: true);
 
     private void OnExportSvg(object sender, RoutedEventArgs e) => Export(png: false);
@@ -487,15 +715,6 @@ public partial class MainWindow : Window
             Filter = png ? "PNG|*.png" : "SVG|*.svg",
         };
         if (dialog.ShowDialog(this) == true) File.WriteAllBytes(dialog.FileName, data);
-    }
-
-    private void OnCopyMcp(object sender, RoutedEventArgs e)
-    {
-        if (_workspace is null || (sender as MenuItem)?.Tag is not string kind) return;
-        var odg = Path.Combine(AppContext.BaseDirectory, "odg.exe");
-        var cfg = Core.Call<McpConfig>("mcp_config", new { odg_path = odg, workspace = _workspace });
-        Clipboard.SetText(kind switch { "claude" => cfg.ClaudeCode, "codex" => cfg.Codex, _ => cfg.Json });
-        StatusText.Text = T("ui-copied");
     }
 
     /// <summary>Tints lines that have errors / warnings in the editor.</summary>
@@ -580,5 +799,56 @@ internal static class Prompt
         okButton.Click += (_, _) => win.DialogResult = true;
         box.Loaded += (_, _) => box.Focus();
         return win.ShowDialog() == true ? box.Text : null;
+    }
+
+    private static Window Dialog(Window owner, string title, UIElement content) => new()
+    {
+        Title = title, Owner = owner, Content = content, SizeToContent = SizeToContent.WidthAndHeight,
+        ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner,
+    };
+
+    /// <summary>Read-only, selectable text (fallback when the clipboard is unavailable).</summary>
+    public static void ShowText(Window owner, string title, string label, string text)
+    {
+        var box = new TextBox
+        {
+            Text = text, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            Width = 520, MaxHeight = 320, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 6, 0, 10),
+        };
+        var close = new Button { Content = "OK", IsDefault = true, IsCancel = true, Padding = new Thickness(12, 2, 12, 2), HorizontalAlignment = HorizontalAlignment.Right };
+        var panel = new StackPanel { Margin = new Thickness(14) };
+        panel.Children.Add(new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap, MaxWidth = 520 });
+        panel.Children.Add(box);
+        panel.Children.Add(close);
+        var win = Dialog(owner, title, panel);
+        box.Loaded += (_, _) => { box.Focus(); box.SelectAll(); };
+        win.ShowDialog();
+    }
+
+    /// <summary>Update offer: returns "install", "page" or null.</summary>
+    public static string? Update(Window owner, string title, string notes, string install, string later, string page)
+    {
+        string? choice = null;
+        var notesBox = new TextBox
+        {
+            Text = notes, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, Width = 520, MaxHeight = 300,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 8, 0, 10), BorderThickness = new Thickness(0),
+        };
+        var installButton = new Button { Content = install, IsDefault = true, Padding = new Thickness(12, 2, 12, 2), Margin = new Thickness(0, 0, 6, 0) };
+        var pageButton = new Button { Content = page, Padding = new Thickness(12, 2, 12, 2), Margin = new Thickness(0, 0, 6, 0) };
+        var laterButton = new Button { Content = later, IsCancel = true, Padding = new Thickness(12, 2, 12, 2) };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        buttons.Children.Add(installButton);
+        buttons.Children.Add(pageButton);
+        buttons.Children.Add(laterButton);
+        var panel = new StackPanel { Margin = new Thickness(14) };
+        panel.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, FontSize = 14, TextWrapping = TextWrapping.Wrap, MaxWidth = 520 });
+        panel.Children.Add(notesBox);
+        panel.Children.Add(buttons);
+        var win = Dialog(owner, "ODiagramador", panel);
+        installButton.Click += (_, _) => { choice = "install"; win.Close(); };
+        pageButton.Click += (_, _) => { choice = "page"; win.Close(); };
+        win.ShowDialog();
+        return choice;
     }
 }

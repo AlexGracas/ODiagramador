@@ -49,6 +49,9 @@ pub struct WorkspaceConfig {
     pub lang: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+    /// Diagram font family, shared by the apps and the agents' headless renders.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

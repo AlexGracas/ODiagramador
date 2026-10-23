@@ -7,6 +7,7 @@ struct SourceEditor: NSViewRepresentable {
     var errorLines: Set<Int>
     var warningLines: Set<Int>
     @Binding var scrollToLine: Int?
+    var font: NSFont = .monospacedSystemFont(ofSize: 13, weight: .regular)
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -53,6 +54,11 @@ struct SourceEditor: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.parent = self
         guard let tv = context.coordinator.textView else { return }
+        if tv.font != font {
+            tv.font = font
+            tv.typingAttributes[.font] = font
+            context.coordinator.ruler?.needsDisplay = true
+        }
         if tv.string != text {
             let sel = tv.selectedRanges
             tv.string = text

@@ -4,30 +4,75 @@
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:ae="http://icsharpcode.net/sharpdevelop/avalonedit"
         Title="ODiagramador" Width="1280" Height="820" MinWidth="900" MinHeight="560">
+    <Window.Resources>
+        <Style x:Key="Glyph" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="Margin" Value="2,0" />
+            <Setter Property="MinWidth" Value="34" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+    </Window.Resources>
+    <Grid>
     <DockPanel>
-        <!-- toolbar -->
-        <ToolBarTray DockPanel.Dock="Top">
-            <ToolBar>
-                <Button x:Name="OpenButton" Click="OnOpenFolder" />
-                <Button x:Name="NewButton" Click="OnNewDiagram" />
-                <Separator />
-                <Button x:Name="ExportPngButton" Click="OnExportPng" />
-                <Button x:Name="ExportSvgButton" Click="OnExportSvg" />
-                <Separator />
-                <Menu Background="Transparent">
-                    <MenuItem x:Name="McpMenu">
-                        <MenuItem Header="Claude Code" Tag="claude" Click="OnCopyMcp" />
-                        <MenuItem Header="Codex" Tag="codex" Click="OnCopyMcp" />
-                        <MenuItem Header="JSON (Cursor, Claude Desktop…)" Tag="json" Click="OnCopyMcp" />
-                    </MenuItem>
-                </Menu>
-                <Separator />
-                <ComboBox x:Name="LanguageBox" Width="110" SelectionChanged="OnLanguageChanged">
-                    <ComboBoxItem Content="English" Tag="en" />
-                    <ComboBoxItem Content="Português" Tag="pt-BR" />
-                </ComboBox>
-            </ToolBar>
-        </ToolBarTray>
+        <!-- toolbar: icon buttons (Segoe Fluent / MDL2 glyphs, brand marks for MCP) -->
+        <Border DockPanel.Dock="Top" Padding="6,4" BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                    <Button x:Name="OpenButton" Style="{StaticResource IconButton}" Click="OnOpenFolder">
+                        <TextBlock Style="{StaticResource Glyph}" Text="&#xED25;" />
+                    </Button>
+                    <Button x:Name="NewButton" Style="{StaticResource IconButton}" Click="OnNewDiagram">
+                        <Grid>
+                            <TextBlock Style="{StaticResource Glyph}" Text="&#xE8A5;" />
+                            <TextBlock Style="{StaticResource Glyph}" Text="&#xE710;" FontSize="9" FontWeight="Bold"
+                                       HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-4,-3" />
+                        </Grid>
+                    </Button>
+                    <Button x:Name="ExportButton" Style="{StaticResource IconButton}" Click="OnOpenMenu">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource Glyph}" Text="&#xEDE1;" />
+                            <TextBlock Style="{StaticResource Glyph}" Text="&#xE70D;" FontSize="9" Margin="4,0,0,0" />
+                        </StackPanel>
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="PNG" Click="OnExportPng">
+                                    <MenuItem.Icon><TextBlock Style="{StaticResource Glyph}" Text="&#xEB9F;" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="SVG" Click="OnExportSvg">
+                                    <MenuItem.Icon><TextBlock Style="{StaticResource Glyph}" Text="&#xE943;" /></MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                    <Button x:Name="McpButton" Style="{StaticResource IconButton}" Click="OnOpenMenu">
+                        <StackPanel Orientation="Horizontal">
+                            <ContentControl x:Name="McpIcon" Width="16" Height="16" />
+                            <TextBlock Style="{StaticResource Glyph}" Text="&#xE70D;" FontSize="9" Margin="4,0,0,0" />
+                        </StackPanel>
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="McpMenu" />
+                        </Button.ContextMenu>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                    <Button x:Name="UpdateButton" Style="{StaticResource IconButton}" Click="OnShowUpdate" Visibility="Collapsed">
+                        <TextBlock Style="{StaticResource Glyph}" Text="&#xE896;" Foreground="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
+                    </Button>
+                    <Button x:Name="SettingsButton" Style="{StaticResource IconButton}" Click="OnSettings">
+                        <TextBlock Style="{StaticResource Glyph}" Text="&#xE713;" />
+                    </Button>
+                </StackPanel>
+                <TextBlock x:Name="TitleText" VerticalAlignment="Center" Margin="12,0" TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+            </DockPanel>
+        </Border>
 
         <!-- status bar -->
         <StatusBar DockPanel.Dock="Bottom">
@@ -143,4 +188,9 @@
             </Grid>
         </Grid>
     </DockPanel>
+    <Border x:Name="Toast" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,40"
+            Padding="14,8" CornerRadius="16" Background="#E6202020">
+        <TextBlock x:Name="ToastText" Foreground="White" />
+    </Border>
+    </Grid>
 </Window>

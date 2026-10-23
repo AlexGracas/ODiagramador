@@ -141,10 +141,32 @@ struct ActivityEvent: Codable, Hashable, Identifiable {
 struct WorkspaceConfig: Codable {
     var lang: String?
     var theme: String?
+    var font: String?
 }
 
 struct McpConfig: Codable {
     var json: String
     var claudeCode: String
     var codex: String
+    var remoteJson: String?
+    var remoteClaudeCode: String?
+    var remoteCodex: String?
+}
+
+struct UpdateInfo: Codable, Equatable {
+    var available: Bool
+    var current: String
+    var latest: String
+    var pageUrl: String
+    var assetName: String?
+    var assetUrl: String?
+    var assetSize: Int?
+    var notes: String
+}
+
+struct CoreVersion: Codable {
+    var version: String
+    var mermaid: String
+    var releasesApi: String
+    var releasesPage: String
 }

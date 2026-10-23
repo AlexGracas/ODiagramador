@@ -28,6 +28,7 @@ struct ContentView: View {
             }
         }
         .toolbar { Toolbar(showingNew: $showingNew) }
+        .modifier(Overlays(updater: state.updater))
         .navigationTitle(state.selectedPath ?? state.t("ui-app-title"))
         .sheet(isPresented: $showingNew) { NewDiagramSheet(isPresented: $showingNew) }
         .onAppear { state.setDarkMode(colorScheme == .dark) }
@@ -133,7 +134,7 @@ struct SourcePane: View {
                         .foregroundStyle(.purple)
                 }
             }
-            SourceEditor(text: $state.source, errorLines: lines("error"), warningLines: lines("warning"), scrollToLine: $state.scrollToLine)
+            SourceEditor(text: $state.source, errorLines: lines("error"), warningLines: lines("warning"), scrollToLine: $state.scrollToLine, font: state.editorFont)
                 .disabled(state.selectedPath == nil)
         }
     }
@@ -316,29 +317,84 @@ struct ActivityList: View {
 struct Toolbar: ToolbarContent {
     @EnvironmentObject var state: AppState
     @Binding var showingNew: Bool
+    @Environment(\.openWindow) private var openWindow
 
     var body: some ToolbarContent {
         ToolbarItemGroup {
-            Button { state.chooseWorkspace() } label: { Label(state.t("ui-open-folder"), systemImage: "folder") }
-            Button { showingNew = true } label: { Label(state.t("ui-new-diagram"), systemImage: "plus") }
+            Button { state.chooseWorkspace() } label: { Label(state.t("ui-open-folder"), systemImage: "folder.badge.gearshape") }
+                .help(state.t("ui-open-folder"))
+            Button { showingNew = true } label: { Label(state.t("ui-new-diagram"), systemImage: "doc.badge.plus") }
+                .help(state.t("ui-new-diagram"))
                 .disabled(state.workspace == nil)
             Menu {
-                Button(state.t("ui-export-png")) { state.export(png: true) }
-                Button(state.t("ui-export-svg")) { state.export(png: false) }
-            } label: { Label("Export", systemImage: "square.and.arrow.up") }
+                Button { state.export(png: true) } label: { Label("PNG", systemImage: "photo") }
+                Button { state.export(png: false) } label: { Label("SVG", systemImage: "chevron.left.forwardslash.chevron.right") }
+            } label: { Label(state.t("ui-export"), systemImage: "square.and.arrow.up") }
+                .help(state.t("ui-export"))
                 .disabled(state.selectedPath == nil)
             Menu {
-                Button("Claude Code") { state.copyMcpConfig("claude") }
-                Button("Codex") { state.copyMcpConfig("codex") }
-                Button("JSON (Cursor, Claude Desktop…)") { state.copyMcpConfig("json") }
-            } label: { Label(state.t("ui-copy-mcp-config"), systemImage: "cpu") }
-                .disabled(state.workspace == nil)
-            Picker(state.t("ui-language"), selection: Binding(get: { state.lang }, set: { state.setLanguage($0) })) {
-                Text("Português").tag("pt-BR")
-                Text("English").tag("en")
-            }
-            .pickerStyle(.menu)
+                Section(state.t("ui-mcp-copy-for")) {
+                    ForEach(AppState.mcpClients, id: \.id) { client in
+                        Button { state.copyMcpConfig(client.id) } label: {
+                            Label { Text(client.name) } icon: { MCPClientIcon(id: client.id) }
+                        }
+                    }
+                    Button { state.copyMcpConfig("json") } label: { Label(state.t("ui-mcp-other"), systemImage: "curlybraces") }
+                }
+                Divider()
+                Button {
+                    state.settingsTab = "mcp"
+                    openWindow(id: "settings")
+                } label: { Label(state.t("ui-mcp-settings"), systemImage: "gearshape") }
+            } label: { Label { Text(state.t("ui-mcp-configure")) } icon: { BrandIcon.mcp.image } }
+                .help(state.t("ui-mcp-configure"))
+                .accessibilityLabel(state.t("ui-mcp-configure"))
+            UpdateBadge(updater: state.updater)
+            Button {
+                state.settingsTab = "general"
+                openWindow(id: "settings")
+            } label: { Label(state.t("ui-settings"), systemImage: "gearshape") }
+                .help(state.t("ui-settings"))
         }
+    }
+}
+
+/// Shows up in the toolbar only when a newer release exists.
+struct UpdateBadge: View {
+    @EnvironmentObject var state: AppState
+    @ObservedObject var updater: Updater
+
+    var body: some View {
+        if let info = updater.available {
+            Button { updater.showSheet = true } label: {
+                Label(state.t("ui-update-available", ["version": info.latest, "current": info.current]), systemImage: "arrow.down.circle.fill")
+            }
+            .foregroundStyle(Color.accentColor)
+            .help(state.t("ui-update-now"))
+        }
+    }
+}
+
+/// Toast + update sheet host.
+struct Overlays: ViewModifier {
+    @EnvironmentObject var state: AppState
+    @ObservedObject var updater: Updater
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .bottom) {
+                if let toast = state.toast {
+                    Label(toast, systemImage: "checkmark.circle.fill")
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(.regularMaterial, in: Capsule())
+                        .shadow(radius: 4)
+                        .padding(.bottom, 24)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: state.toast)
+            .sheet(isPresented: $updater.showSheet) { UpdateSheet(updater: updater) }
     }
 }
 

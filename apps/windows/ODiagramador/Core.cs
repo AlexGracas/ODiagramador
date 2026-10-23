@@ -130,6 +130,6 @@ public record ActivityEvent(string Ts, string Actor, string Action, string Path,
     public string When => Ts.Replace('T', ' ')[..Math.Min(19, Ts.Length)];
 }
 
-public record WorkspaceConfig(string? Lang, string? Theme);
+public record WorkspaceConfig(string? Lang, string? Theme, string? Font);
 
-public record McpConfig(string Json, string ClaudeCode, string Codex);
+public record McpConfig(string Json, string ClaudeCode, string Codex, string? RemoteJson, string? RemoteClaudeCode, string? RemoteCodex);

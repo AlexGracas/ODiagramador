@@ -8,11 +8,25 @@ public partial class App : Application
     /// <summary>Command line: [--workspace DIR] [odiagramador://open?workspace=…&amp;path=…]</summary>
     public static string[] Args { get; private set; } = Array.Empty<string>();
 
+    public static Preferences Prefs { get; } = Preferences.Load();
+
     protected override void OnStartup(StartupEventArgs e)
     {
         Args = e.Args;
+        ApplyTheme(Prefs);
         RegisterUrlScheme();
         base.OnStartup(e);
+    }
+
+    /// <summary>Fluent theme (light/dark/system) on .NET 9+; the classic theme otherwise.</summary>
+    public static void ApplyTheme(Preferences prefs)
+    {
+#if NET9_0_OR_GREATER
+#pragma warning disable WPF0001 // ThemeMode is marked experimental
+        var mode = prefs.Appearance switch { "dark" => ThemeMode.Dark, "light" => ThemeMode.Light, _ => ThemeMode.System };
+        if (Current.ThemeMode != mode) Current.ThemeMode = mode;
+#pragma warning restore WPF0001
+#endif
     }
 
     /// <summary>Registers odiagramador:// for the current user so the MCP tool open_in_viewer can reach the app.</summary>
