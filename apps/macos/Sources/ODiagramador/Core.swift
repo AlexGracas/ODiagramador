@@ -44,6 +44,15 @@ enum Core {
         }
     }
 
+    /// The result as plain JSON (dictionaries/arrays), for values forwarded untouched to the viewer.
+    static func json(_ method: String, _ args: [String: Any] = [:]) throws -> Any? {
+        let obj = try JSONSerialization.jsonObject(with: raw(method, args)) as? [String: Any]
+        if obj?["ok"] as? Bool != true {
+            throw Failure(message: obj?["error"] as? String ?? "unknown error")
+        }
+        return obj?["result"]
+    }
+
     static func optional<T: Decodable>(_ method: String, _ args: [String: Any] = [:], as type: T.Type = T.self) throws -> T? {
         let env = try decoder.decode(Envelope<T>.self, from: raw(method, args))
         guard env.ok else { throw Failure(message: env.error ?? "unknown error") }

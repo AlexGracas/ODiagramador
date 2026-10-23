@@ -54,6 +54,9 @@ final class AppState: ObservableObject {
     private var renderTask: Task<Void, Never>?
     private var saveTask: Task<Void, Never>?
     private var pollTimer: Timer?
+    /// Read position in the agents' message log (nil = viewer just opened on this folder).
+    private var inboxCursor: UInt64?
+    private var presenceAt = Date.distantPast
     private var lastModified: [String: String] = [:]
     private var fitNext = true
     private var lastSvg: String?
@@ -70,13 +73,17 @@ final class AppState: ObservableObject {
         viewer.onLayoutEdit = { [weak self] args in self?.applyLayoutEdit(args) }
         viewer.onConstruct = { [weak self] args in self?.applyConstruct(args) }
         viewer.onEdit = { [weak self] args in self?.applyEdit(args) }
+        viewer.onAnswer = { [weak self] id, text in self?.answerAgent(id, text) }
         viewer.onReady = { [weak self] in
             guard let self else { return }
             self.viewer.send(["op": "strings", "strings": self.strings])
             self.viewer.send(["op": "theme", "theme": self.darkMode ? "dark" : "light"])
             self.render()
         }
-        if let path = UserDefaults.standard.string(forKey: "workspace"), FileManager.default.fileExists(atPath: path) {
+        // `--workspace DIR` (how agents launch the viewer) wins over the last folder
+        let args = CommandLine.arguments
+        let argWorkspace = args.firstIndex(of: "--workspace").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+        if let path = argWorkspace ?? UserDefaults.standard.string(forKey: "workspace"), FileManager.default.fileExists(atPath: path) {
             openWorkspace(URL(fileURLWithPath: path))
         }
         applyAppearance()
@@ -148,7 +155,10 @@ final class AppState: ObservableObject {
     }
 
     func openWorkspace(_ url: URL) {
+        if let old = workspace, old != url { try? Core.run("clear_presence", ["workspace": old.path]) }
         workspace = url
+        inboxCursor = nil
+        presenceAt = .distantPast
         UserDefaults.standard.set(url.path, forKey: "workspace")
         let cfg = try? Core.call("config", ["workspace": url.path], as: WorkspaceConfig.self)
         if let l = cfg?.lang, l != lang {
@@ -206,6 +216,58 @@ final class AppState: ObservableObject {
             selectedPath = nil
             setSource("")
         }
+        syncAgents()
+    }
+
+    // MARK: agent ⇄ human (MCP show_diagram, highlight_elements, notify_user, ask_user)
+
+    /// Tells agents what the human is looking at and delivers their messages to the viewer.
+    private func syncAgents() {
+        guard let ws = workspace else { return }
+        if Date().timeIntervalSince(presenceAt) >= 2 {
+            presenceAt = Date()
+            var p: [String: Any] = ["workspace": ws.path, "app": "ODiagramador", "platform": "macos",
+                                    "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""]
+            if let s = selectedPath { p["path"] = s }
+            if let e = selectedElement { p["element_id"] = e }
+            try? Core.run("set_presence", p)
+        }
+        var args: [String: Any] = ["workspace": ws.path]
+        if let c = inboxCursor { args["cursor"] = c }
+        guard let inbox = try? Core.json("viewer_inbox", args) as? [String: Any] else { return }
+        if let c = inbox["cursor"] as? NSNumber { inboxCursor = c.uint64Value }
+        let messages = inbox["messages"] as? [[String: Any]] ?? []
+        for m in messages { deliverAgentMessage(m) }
+        if !messages.isEmpty { refreshSideData() }
+    }
+
+    private func deliverAgentMessage(_ m: [String: Any]) {
+        let kind = m["kind"] as? String ?? ""
+        let ids = m["element_ids"] as? [String] ?? []
+        var switched = false
+        if let p = m["path"] as? String, kind == "show" || kind == "highlight" || !ids.isEmpty, p != selectedPath {
+            if !diagrams.contains(where: { $0.path == p }) { refreshList() }
+            if diagrams.contains(where: { $0.path == p }) {
+                select(p)
+                switched = true
+            }
+        }
+        viewer.send(["op": "agent", "message": m, "switched": switched])
+        if kind == "notify" {
+            if !NSApp.isActive { NSApp.requestUserAttention(.informationalRequest) }
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    private func answerAgent(_ questionId: String, _ text: String) {
+        guard let ws = workspace else { return }
+        do {
+            try Core.run("answer", ["workspace": ws.path, "question_id": questionId, "text": text])
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        refreshSideData()
     }
 
     private func reloadFromDisk(_ path: String) {

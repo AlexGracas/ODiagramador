@@ -507,6 +507,8 @@
     } else {
       applyTransform();
     }
+    if (spotlight.pending) applySpotlight();
+    else restoreSpotlight();
   }
 
   function showError(err) {
@@ -659,6 +661,7 @@
         }
       }
       if (moved) return;
+      if (spotlight.active) clearSpotlight();
       var marker = e.target.closest && e.target.closest(".odg-marker");
       if (marker) return post({ op: "select-problem", index: +marker.getAttribute("data-problem") });
       var node = e.target.closest && e.target.closest("[data-id]");
@@ -689,6 +692,182 @@
     });
     window.addEventListener("resize", function () { if (view.svg && view.fitted) fit(); });
     showEmpty();
+  }
+
+  // ---------------------------------------------------------------- agent ⇄ human
+  // Messages agents send through MCP (show_diagram, highlight_elements, notify_user, ask_user) arrive from
+  // the host as { op: "agent", message, switched }. Elements are put in evidence (glow + dim the rest) and
+  // a card shows the note / question; answers go back as { op: "answer", question_id, text }.
+  // req: the last request, kept so the evidence survives re-renders (an agent edit reloads the drawing)
+  var spotlight = { pending: null, active: false, els: [], req: null, at: 0 };
+  var shownMessages = {};
+
+  function tr(key, fallback) { return strings[key] || fallback; }
+
+  function clearSpotlight() {
+    spotlight.active = false;
+    spotlight.req = null;
+    if (!view.svg) return;
+    view.svg.classList.remove("odg-dimmed");
+    var lit = view.svg.querySelectorAll(".odg-spotlight");
+    for (var i = 0; i < lit.length; i++) lit[i].classList.remove("odg-spotlight", "lvl-info", "lvl-success", "lvl-warning", "lvl-error");
+  }
+
+  function applySpotlight() {
+    var sp = spotlight.pending;
+    if (!sp || !view.svg) return;
+    var found = [];
+    sp.ids.forEach(function (id) {
+      var el = view.svg.querySelector('[data-id="' + CSS.escape(id) + '"]');
+      if (el) found.push(el);
+    });
+    if (!found.length) {
+      // the diagram may still be rendering: keep the request for the next couple of renders
+      if (++sp.tries > 2) spotlight.pending = null;
+      return;
+    }
+    spotlight.pending = null;
+    clearSpotlight();
+    view.svg.classList.add("odg-dimmed");
+    found.forEach(function (el) { el.classList.add("odg-spotlight", "lvl-" + sp.level); });
+    spotlight.active = true;
+    spotlight.els = found;
+    spotlight.req = { ids: sp.ids, level: sp.level };
+    // centre now, and again on the re-renders of the next few seconds (not later: the human may be editing)
+    if (!sp.quiet) {
+      spotlight.at = Date.now();
+      focusOn(found);
+    } else if (Date.now() - spotlight.at < 4000) {
+      focusOn(found);
+    }
+  }
+
+  /** After a new drawing replaced the old one: light the same elements again. */
+  function restoreSpotlight() {
+    if (!spotlight.active || !spotlight.req) return;
+    spotlight.pending = { ids: spotlight.req.ids, level: spotlight.req.level, tries: 2, quiet: true };
+    applySpotlight();
+  }
+
+  /** Zooms out if needed and pans so every element is visible, centred. */
+  function focusOn(els) {
+    function union() {
+      var r = { l: Infinity, t: Infinity, r: -Infinity, b: -Infinity };
+      els.forEach(function (el) {
+        var b = el.getBoundingClientRect();
+        r.l = Math.min(r.l, b.left); r.t = Math.min(r.t, b.top); r.r = Math.max(r.r, b.right); r.b = Math.max(r.b, b.bottom);
+      });
+      return r;
+    }
+    var vp = viewport.getBoundingClientRect();
+    var vr = { left: vp.left, top: vp.top, width: vp.width, height: vp.height };
+    var cards = document.getElementById("agent-cards");
+    if (cards && cards.children.length) {
+      var free = cards.getBoundingClientRect().left - 12 - vp.left;
+      if (free > 220) vr.width = free;
+    }
+    var u = union();
+    var f = Math.min(1, (vr.width * 0.7) / Math.max(u.r - u.l, 1), (vr.height * 0.6) / Math.max(u.b - u.t, 1));
+    if (f < 1) zoom(f, (u.l + u.r) / 2 - vr.left, (u.t + u.b) / 2 - vr.top);
+    u = union();
+    view.x += vr.left + vr.width / 2 - (u.l + u.r) / 2;
+    view.y += vr.top + vr.height / 2 - (u.t + u.b) / 2;
+    applyTransform();
+  }
+
+  function agentCards() {
+    var box = document.getElementById("agent-cards");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "agent-cards";
+      document.body.appendChild(box);
+    }
+    return box;
+  }
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function dismiss(card) {
+    if (!card.parentNode) return;
+    if (card.dataset.spotlight && spotlight.active) clearSpotlight();
+    card.classList.add("leaving");
+    setTimeout(function () { if (card.parentNode) card.parentNode.removeChild(card); }, 200);
+  }
+
+  function agentMessage(m, switched) {
+    if (!m || (m.id && shownMessages[m.id])) return;
+    if (m.id) shownMessages[m.id] = true;
+    var ids = m.element_ids || [];
+    // card first, so the spotlight can centre the elements in the space the cards leave free
+    if (m.text) addCard(m);
+    if (ids.length) {
+      spotlight.pending = { ids: ids, level: m.level || "info", tries: 0 };
+      // a diagram switch is rendering: the new drawing applies it (showSvg)
+      if (!switched) applySpotlight();
+    }
+  }
+
+  function addCard(m) {
+    var box = agentCards();
+    var level = m.level || (m.kind === "ask" ? "info" : "info");
+    var card = el("div", "agent-card lvl-" + level + (m.kind === "ask" ? " ask" : ""));
+    if ((m.element_ids || []).length) card.dataset.spotlight = "1";
+    var head = el("div", "agent-head");
+    head.appendChild(el("span", "agent-icon", m.kind === "ask" ? "?" : "\u2726"));
+    head.appendChild(el("b", null, m.kind === "ask" ? tr("ui-agent-question", "Question from the agent") : tr("ui-agent", "Agent")));
+    if (m.client) head.appendChild(el("span", "agent-meta", m.client));
+    var close = el("button", "agent-close", "\u00d7");
+    close.title = tr("ui-agent-close", "Close");
+    close.onclick = function () { dismiss(card); };
+    head.appendChild(close);
+    card.appendChild(head);
+    if (m.path) card.appendChild(el("div", "agent-where", m.path + ((m.element_ids || []).length ? " \u00b7 " + m.element_ids.join(", ") : "")));
+    if (m.text) card.appendChild(el("div", "agent-text", m.text));
+
+    if (m.kind === "ask") {
+      var send = function (answer) {
+        answer = String(answer || "").trim();
+        if (!answer) return;
+        post({ op: "answer", question_id: m.id, text: answer });
+        var inputs = card.querySelectorAll(".agent-options, .agent-reply");
+        for (var i = 0; i < inputs.length; i++) card.removeChild(inputs[i]);
+        card.appendChild(el("div", "agent-sent", "\u2713 " + tr("ui-agent-sent", "Answer sent") + ": " + answer));
+        setTimeout(function () { dismiss(card); }, 4000);
+      };
+      if ((m.options || []).length) {
+        var opts = el("div", "agent-options");
+        m.options.forEach(function (o) {
+          var b = el("button", null, o);
+          b.onclick = function () { send(o); };
+          opts.appendChild(b);
+        });
+        card.appendChild(opts);
+      }
+      if (m.allow_text !== false) {
+        var form = el("form", "agent-reply");
+        var input = el("input");
+        input.placeholder = tr("ui-agent-reply-placeholder", "Type your answer\u2026");
+        var go = el("button", "primary", tr("ui-agent-send", "Send"));
+        go.type = "submit";
+        form.appendChild(input);
+        form.appendChild(go);
+        form.onsubmit = function (e) { e.preventDefault(); send(input.value); };
+        card.appendChild(form);
+        setTimeout(function () { input.focus(); }, 50);
+      }
+    } else if (m.kind === "notify" && (level === "info" || level === "success")) {
+      // plain notes fade out by themselves unless the pointer is on them
+      var timer = setTimeout(function () { dismiss(card); }, 20000);
+      card.onmouseenter = function () { clearTimeout(timer); };
+      card.onmouseleave = function () { timer = setTimeout(function () { dismiss(card); }, 6000); };
+    }
+    box.insertBefore(card, box.firstChild);
+    while (box.children.length > 3) box.removeChild(box.lastChild);
   }
 
   // ---------------------------------------------------------------- dispatch
@@ -725,7 +904,13 @@
     }
     if (op === "show") return drawMarkers(msg.problems);
     if (op === "highlight") return highlight(msg.element_id);
-    if (op === "fit") return fit();
+    if (op === "agent") return agentMessage(msg.message, msg.switched);
+    if (op === "fit") {
+      fit();
+      // hosts fit a freshly opened diagram after it renders: keep the agent's elements in view
+      if (spotlight.active && spotlight.els.length && spotlight.els[0].isConnected) focusOn(spotlight.els);
+      return;
+    }
     if (op === "zoom") return zoom(msg.factor || 1.25);
     if (op === "theme") {
       document.documentElement.setAttribute("data-theme", msg.theme === "dark" ? "dark" : "light");

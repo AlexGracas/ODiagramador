@@ -66,13 +66,20 @@ copy ready-made configs for each client. Traffic is plain HTTP: outside a truste
 | `list_diagrams()` / `get_diagram(path)` | Status of every diagram / numbered source + last report + open comments. |
 | `get_feedback(path?)` / `resolve_feedback(id, resolution)` | Read and close the human's comments. |
 | `get_activity(path?)` | Who changed what recently. |
-| `open_in_viewer(path)` | Bring the diagram up in the desktop app for the human. |
+| `show_diagram(path, element_ids?, message?, level?)` | Open a diagram in the human's desktop viewer (launching the app if needed), optionally highlighting elements with a note. `open_in_viewer` is the old name. |
+| `highlight_elements(path, element_ids, message?, level?)` | Put elements in evidence: they glow, the rest dims, the view centres on them, and the note appears beside them. |
+| `notify_user(message, level?, path?, element_ids?)` | Show a message to the human (progress, summary, warning). Does not wait. |
+| `ask_user(question, options?, allow_text?, path?, element_ids?, wait_seconds?)` | Ask the human; options become buttons. Waits up to `wait_seconds` (default 60, max 600) and returns the answer, or a `question_id` to check later. |
+| `get_user_replies(question_id?)` | The answer to a question, or the recent conversation. |
+| `get_viewer_status()` | Is the viewer open on this workspace? Which diagram and element is the human looking at? |
 | `delete_diagram(path)` | Remove a diagram and its previews. |
 
 Resources: `diagram://<path>` (source), `diagram://<path>#report` (JSON), `diagram://<path>#preview` (PNG).
 Prompts: `fix_diagram_problems(path)`, `create_diagram_from_description(description, type)`.
 
 Every write tool also returns `structuredContent` with the full report (see below), so programmatic clients do not need to parse text.
+Write tools (`create_diagram`, `update_diagram`, `patch_diagram`, `arrange_diagram`, `add_element`, `edit_element`)
+accept `show: true` (plus optional `element_ids` and `message`) to open the result for the human in the same call.
 
 ## 3. Recommended loop
 
@@ -85,6 +92,19 @@ loop:
 until valid and no warnings (or warnings are intentional)
 get_feedback → address comments → resolve_feedback
 ```
+
+Talking to the human (desktop viewer open on the same folder):
+
+```
+patch_diagram(path, edits, show=true, element_ids=["pay"], message="Added the payment step")
+ask_user("Notify by e-mail or SMS?", options=["E-mail","SMS"], path, element_ids=["notify"])
+  → "The user answered: E-mail"        (or a question_id → get_user_replies later)
+notify_user("Done: 3 diagrams updated", level="success")
+```
+
+Messages live in `.odiagramador/messages.jsonl` (the conversation, also shown in the app's Activity tab) and the
+viewer's presence in `.odiagramador/viewer.json`, so this works with any number of agents and needs no network.
+The human can also leave comments on elements for you: `get_feedback`.
 
 Layout is separate from content: if the diagram is correct but hard to read, use
 `arrange_diagram` (switch to `elk`, pin nodes with `positions`, or `layers: first/last`)

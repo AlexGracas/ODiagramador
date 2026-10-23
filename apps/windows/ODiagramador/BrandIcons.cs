@@ -39,7 +39,11 @@ public static class BrandIcons
         if (geometry is null) return null;
         var path = new System.Windows.Shapes.Path { Data = geometry, Stretch = Stretch.Uniform };
         if (fill is not null) path.Fill = fill;
-        else path.SetResourceReference(Shape.FillProperty, SystemColors.ControlTextBrushKey);
+        // monochrome marks take the text colour of the button / menu item they sit in (light and dark themes)
+        else path.SetBinding(Shape.FillProperty, new System.Windows.Data.Binding("Foreground")
+        {
+            RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.FindAncestor, typeof(Control), 1),
+        });
         return new Viewbox { Width = size, Height = size, Child = new Canvas { Width = 24, Height = 24, Children = { new Viewbox { Width = 24, Height = 24, Child = path } } } };
     }
 

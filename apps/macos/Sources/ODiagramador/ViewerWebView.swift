@@ -61,6 +61,8 @@ final class ViewerBridge: NSObject, WKScriptMessageHandler {
     var onConstruct: (([String: Any]) -> Void)?
     /// Inspector: { action, params } (rename, shape, delete, edge_label, edge_delete).
     var onEdit: (([String: Any]) -> Void)?
+    /// The human answered an agent's question: (question_id, text).
+    var onAnswer: ((String, String) -> Void)?
 
     func send(_ message: [String: Any]) {
         guard ready, let webView else {
@@ -89,6 +91,8 @@ final class ViewerBridge: NSObject, WKScriptMessageHandler {
             if let id = obj["id"] as? Int, let result = obj["result"] as? [String: Any] { onResult?(id, result) }
         case "select":
             onSelect?(obj["element_id"] as? String)
+        case "answer":
+            if let id = obj["question_id"] as? String, let text = obj["text"] as? String { onAnswer?(id, text) }
         case "select-problem":
             if let i = obj["index"] as? Int { onSelectProblem?(i) }
         case "move":

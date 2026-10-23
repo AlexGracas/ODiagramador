@@ -195,3 +195,82 @@ body.can-drag g.node[data-id] { cursor: move; }
   stroke: var(--select) !important;
   stroke-width: 3px !important;
 }
+
+/* hover / pressed feedback for every button in the viewer (toolbar, palette, forms, cards) */
+button, .pal-btn { transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease; }
+button:not(:disabled):hover, .pal-btn:not(:disabled):hover { background-color: color-mix(in srgb, var(--info) 12%, transparent); }
+button:not(:disabled):active, .pal-btn:not(:disabled):active { background-color: color-mix(in srgb, var(--info) 24%, transparent); }
+button.primary:not(:disabled):hover { background-color: color-mix(in srgb, var(--info) 85%, #000); }
+button.danger:not(:disabled):hover { background-color: color-mix(in srgb, var(--error) 12%, transparent); }
+button:focus-visible, .pal-btn:focus-visible, select:focus-visible { outline: 2px solid var(--info); outline-offset: 1px; }
+button:disabled { opacity: 0.5; cursor: default; }
+
+/* ---- agent ⇄ human: elements in evidence and message / question cards */
+:root { --agent: #6d4aff; --success: #1a7f37; }
+:root[data-theme="dark"] { --agent: #a58bff; --success: #3fb950; }
+.odg-dimmed [data-id]:not(.odg-spotlight) { opacity: 0.28; transition: opacity 0.3s ease; }
+.odg-spotlight { --glow: var(--agent); animation: odg-pulse 1.6s ease-in-out infinite; }
+.odg-spotlight.lvl-success { --glow: var(--success); }
+.odg-spotlight.lvl-warning { --glow: var(--warning); }
+.odg-spotlight.lvl-error { --glow: var(--error); }
+.odg-spotlight rect, .odg-spotlight polygon, .odg-spotlight circle, .odg-spotlight ellipse, .odg-spotlight path {
+  stroke: var(--glow) !important;
+  stroke-width: 4px !important;
+}
+@keyframes odg-pulse {
+  0%, 100% { filter: drop-shadow(0 0 2px var(--glow)); }
+  50% { filter: drop-shadow(0 0 10px var(--glow)); }
+}
+#agent-cards {
+  position: absolute;
+  top: 56px;
+  right: 10px;
+  width: min(320px, calc(100% - 20px));
+  max-height: calc(100% - 110px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 6;
+}
+.agent-card {
+  --accent: var(--agent);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+  padding: 10px 12px;
+  animation: odg-card-in 0.2s ease-out;
+}
+.agent-card.lvl-success { --accent: var(--success); }
+.agent-card.lvl-warning { --accent: var(--warning); }
+.agent-card.lvl-error { --accent: var(--error); }
+.agent-card.leaving { opacity: 0; transform: translateX(12px); transition: all 0.2s ease; }
+@keyframes odg-card-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.agent-head { display: flex; align-items: center; gap: 6px; }
+.agent-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: linear-gradient(135deg, #3d7bff, #8e2de2); color: #fff; font-size: 12px; font-weight: 700;
+}
+.agent-meta { color: var(--muted); font-size: 12px; }
+.agent-close {
+  margin-left: auto; width: 24px; height: 24px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--muted); font-size: 16px; cursor: pointer;
+}
+.agent-where { margin-top: 4px; color: var(--muted); font-size: 12px; font-family: ui-monospace, "SF Mono", Consolas, monospace; overflow-wrap: anywhere; }
+.agent-text { margin-top: 6px; white-space: pre-wrap; line-height: 1.4; overflow-wrap: anywhere; }
+.agent-options { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.agent-options button, .agent-reply button {
+  height: 28px; padding: 0 12px; border: 1px solid var(--border); border-radius: 6px;
+  background: transparent; color: var(--fg); font: inherit; cursor: pointer;
+}
+.agent-options button { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.agent-reply { display: flex; gap: 6px; margin-top: 10px; }
+.agent-reply input {
+  flex: 1; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--fg); font: inherit;
+}
+.agent-reply button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.agent-sent { margin-top: 8px; color: var(--success); font-weight: 600; }

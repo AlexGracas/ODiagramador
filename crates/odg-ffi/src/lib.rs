@@ -160,6 +160,27 @@ pub fn invoke(method: &str, a: &Value) -> R {
             to_value(fb)
         }
         "resolve_feedback" => to_value(ws(a)?.resolve_feedback(arg(a, "id")?, opt(a, "resolution"), actor(a)).map_err(|e| e.to_string())?),
+        // agent ⇄ human channel (see odg_core::channel)
+        "viewer_inbox" => to_value(ws(a)?.viewer_inbox(a.get("cursor").and_then(Value::as_u64)).map_err(|e| e.to_string())?),
+        "answer" => to_value(ws(a)?.answer(arg(a, "question_id")?, arg(a, "text")?).map_err(|e| e.to_string())?),
+        "messages" => to_value(ws(a)?.recent_messages(a.get("limit").and_then(Value::as_u64).unwrap_or(50) as usize).map_err(|e| e.to_string())?),
+        "set_presence" => {
+            let presence = odg_core::channel::Presence {
+                app: opt(a, "app").unwrap_or("ODiagramador").into(),
+                version: opt(a, "version").unwrap_or(odg_core::VERSION).into(),
+                platform: opt(a, "platform").unwrap_or(std::env::consts::OS).into(),
+                pid: std::process::id(),
+                updated: 0,
+                path: opt(a, "path").filter(|p| !p.is_empty()).map(str::to_string),
+                element_id: opt(a, "element_id").filter(|p| !p.is_empty()).map(str::to_string),
+            };
+            ws(a)?.set_presence(&presence).map_err(|e| e.to_string())?;
+            Ok(Value::Null)
+        }
+        "clear_presence" => {
+            ws(a)?.clear_presence().map_err(|e| e.to_string())?;
+            Ok(Value::Null)
+        }
         "config" => to_value(ws(a)?.config()),
         "set_config" => {
             // merge: only the keys present in args change ("" clears a key)

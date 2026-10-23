@@ -10,6 +10,7 @@ use std::io::{BufRead, Read, Write};
 use base64::Engine as _;
 use odg_core::analyze::{excerpt, Analysis};
 use odg_core::model::RawRender;
+use odg_core::channel::Message;
 use odg_core::workspace::{Actor, Workspace};
 use odg_core::{analyze, engine_for_path, syntax, AnalyzeOptions, Lang, MermaidEngine, Report, Severity};
 use odg_render::Renderer;
@@ -22,6 +23,10 @@ Workflow: (1) unsure about syntax? call get_syntax_help; (2) create_diagram / up
 save the file AND return the validation report plus an image; (3) look at the image: problems are numbered \
 markers that match the report; (4) fix errors first (line numbers given), then warnings; (5) call get_feedback \
 to read comments the human left in the desktop viewer, and resolve_feedback when done. \
+Talking to the human: show_diagram opens a diagram in their desktop viewer (optionally highlighting elements with a note); \
+highlight_elements puts elements in evidence; notify_user shows a message; ask_user asks a question (optionally with choices) \
+and waits for the answer; get_user_replies reads answers later; get_viewer_status tells whether the human has the viewer open \
+and what they are looking at. Write tools accept show=true to open the changed diagram for the human. \
 validate_diagram checks text without saving. arrange_diagram fixes the layout (ELK, drag-like positions) without touching the diagram content. inspect_diagram describes the layout in text for agents without vision. \
 Diagrams are plain .mmd files in the workspace; the human sees your changes live in the ODiagramador app.";
 
@@ -423,12 +428,98 @@ impl Server {
                     None => Ok(text(format!("No cheat-sheet for `{topic}`. Topics: {}", syntax::topics().join(", ")))),
                 }
             }
-            "open_in_viewer" => {
+            "show_diagram" | "open_in_viewer" => {
                 let path = s("path").ok_or(ToolError("`path` is required".into()))?;
-                let rel = self.ws.rel(path)?;
-                let url = format!("odiagramador://open?workspace={}&path={}", pct(&self.ws.root().to_string_lossy()), pct(&rel));
-                open_url(&url).map_err(ToolError)?;
-                Ok(text(format!("Asked the ODiagramador app to show {rel}.")))
+                if !self.ws.exists(path) {
+                    return Err(ToolError(format!("{path} does not exist")));
+                }
+                let ids = strings(args, "element_ids");
+                let kind = if ids.is_empty() { "show" } else { "highlight" };
+                let (msg, note) = self.tell_viewer(Message { kind: kind.into(), path: Some(path.into()), element_ids: ids, text: s("message").map(str::to_string), level: s("level").map(str::to_string), ..Default::default() })?;
+                Ok(json!({"content": [{"type": "text", "text": note}], "structuredContent": {"message": msg}}))
+            }
+            "highlight_elements" => {
+                let path = s("path").ok_or(ToolError("`path` is required".into()))?;
+                let ids = strings(args, "element_ids");
+                if ids.is_empty() {
+                    return Err(ToolError("`element_ids` must list at least one node/edge id (see inspect_diagram)".into()));
+                }
+                let src = self.ws.read(path)?;
+                let unknown: Vec<&String> = ids.iter().filter(|id| !mentions_id(&src, id) && !id.starts_with("L_")).collect();
+                let (msg, mut note) = self.tell_viewer(Message { kind: "highlight".into(), path: Some(path.into()), element_ids: ids.clone(), text: s("message").map(str::to_string), level: s("level").map(str::to_string), ..Default::default() })?;
+                if !unknown.is_empty() {
+                    note.push_str(&format!("\nWarning: not found in the source: {} (use the ids from inspect_diagram).", unknown.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")));
+                }
+                Ok(json!({"content": [{"type": "text", "text": note}], "structuredContent": {"message": msg}}))
+            }
+            "notify_user" => {
+                let message = s("message").ok_or(ToolError("`message` is required".into()))?;
+                let (msg, note) = self.tell_viewer(Message { kind: "notify".into(), path: s("path").map(str::to_string), element_ids: strings(args, "element_ids"), text: Some(message.into()), level: s("level").map(str::to_string), ..Default::default() })?;
+                Ok(json!({"content": [{"type": "text", "text": note}], "structuredContent": {"message": msg}}))
+            }
+            "ask_user" => {
+                let question = s("question").ok_or(ToolError("`question` is required".into()))?;
+                let options = strings(args, "options");
+                let allow_text = b("allow_text", true) || options.is_empty();
+                let wait = args.get("wait_seconds").and_then(Value::as_u64).unwrap_or(60).min(600);
+                let (q, note) = self.tell_viewer(Message { kind: "ask".into(), path: s("path").map(str::to_string), element_ids: strings(args, "element_ids"), text: Some(question.into()), options, allow_text: Some(allow_text), level: Some("info".into()), ..Default::default() })?;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait);
+                loop {
+                    if let Some(a) = self.ws.answer_to(&q.id)? {
+                        let reply = a.text.clone().unwrap_or_default();
+                        return Ok(json!({"content": [{"type": "text", "text": format!("The user answered: {reply}")}],
+                            "structuredContent": {"answered": true, "question_id": q.id, "answer": reply, "answered_at": a.ts}}));
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(400));
+                }
+                Ok(json!({"content": [{"type": "text", "text": format!("{note}\nNo answer yet after {wait}s. The question stays open in the viewer; call get_user_replies with question_id {} later (or continue and check back).", q.id)}],
+                    "structuredContent": {"answered": false, "question_id": q.id}}))
+            }
+            "get_user_replies" => {
+                if let Some(id) = s("question_id") {
+                    return Ok(match self.ws.answer_to(id)? {
+                        Some(a) => json!({"content": [{"type": "text", "text": format!("Answer to {id}: {}", a.text.clone().unwrap_or_default())}],
+                            "structuredContent": {"answered": true, "question_id": id, "answer": a.text, "answered_at": a.ts}}),
+                        None => json!({"content": [{"type": "text", "text": format!("{id}: not answered yet.")}],
+                            "structuredContent": {"answered": false, "question_id": id}}),
+                    });
+                }
+                let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(20) as usize;
+                let messages = self.ws.recent_messages(limit)?;
+                let mut t: String = messages
+                    .iter()
+                    .map(|m| {
+                        let who = if m.from == Some(Actor::Human) { "human" } else { "agent" };
+                        let about = m.path.as_deref().map(|p| format!(" [{p}]")).unwrap_or_default();
+                        let re = m.reply_to.as_deref().map(|r| format!(" (reply to {r})")).unwrap_or_default();
+                        format!("- {} {who} {} {}{about}{re}: {}\n", m.ts, m.kind, m.id, m.text.as_deref().unwrap_or(""))
+                    })
+                    .collect();
+                if t.is_empty() {
+                    t = "No messages yet.".into();
+                }
+                let open = self.ws.feedback(None, false).map(|f| f.len()).unwrap_or(0);
+                if open > 0 {
+                    t.push_str(&format!("\n{open} open comment(s) from the human on diagrams: call get_feedback.\n"));
+                }
+                Ok(json!({"content": [{"type": "text", "text": t}], "structuredContent": {"messages": messages}}))
+            }
+            "get_viewer_status" => {
+                let p = self.ws.presence();
+                let live = p.as_ref().is_some_and(|p| p.is_live());
+                let t = match (&p, live) {
+                    (Some(p), true) => format!(
+                        "The human has the ODiagramador viewer open ({} {} on {}), looking at {}{}.",
+                        p.app, p.version, p.platform,
+                        p.path.as_deref().unwrap_or("no diagram"),
+                        p.element_id.as_deref().map(|e| format!(", element `{e}` selected")).unwrap_or_default()
+                    ),
+                    _ => "The ODiagramador viewer is not open for this workspace. show_diagram / highlight_elements / ask_user will try to launch it.".into(),
+                };
+                Ok(json!({"content": [{"type": "text", "text": t}], "structuredContent": {"open": live, "presence": p}}))
             }
             _ => Err(ToolError(format!("unknown tool: {name}"))),
         }
@@ -446,7 +537,46 @@ impl Server {
         let rel = self.ws.write(path, source, Actor::Agent, self.client.as_deref())?;
         let mut a = self.run(&rel, source, args);
         self.ws.save_analysis(&rel, &mut a, Some(Actor::Agent))?;
-        Ok(self.respond(&a, source, Some(&rel), args.get("include_image").and_then(Value::as_bool).unwrap_or(true)))
+        let mut out = self.respond(&a, source, Some(&rel), args.get("include_image").and_then(Value::as_bool).unwrap_or(true));
+        if args.get("show").and_then(Value::as_bool).unwrap_or(false) {
+            let ids = strings(args, "element_ids");
+            let kind = if ids.is_empty() { "show" } else { "highlight" };
+            let message = args.get("message").and_then(Value::as_str).map(str::to_string);
+            let (_, note) = self.tell_viewer(Message { kind: kind.into(), path: Some(rel.clone()), element_ids: ids, text: message, ..Default::default() })?;
+            if let Some(content) = out["content"].as_array_mut() {
+                content.push(json!({"type": "text", "text": note}));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Posts a message for the human's viewer and makes sure it is seen: launches the app when it is
+    /// closed (except for plain notifications). Returns the stored message and a note for the agent.
+    fn tell_viewer(&self, mut msg: Message) -> Result<(Message, String), ToolError> {
+        msg.from = Some(Actor::Agent);
+        msg.client = self.client.clone();
+        if !matches!(msg.level.as_deref(), None | Some("info" | "success" | "warning" | "error")) {
+            msg.level = Some("info".into());
+        }
+        let msg = self.ws.post_message(msg)?;
+        let live = self.ws.presence().is_some_and(|p| p.is_live());
+        let what = match msg.kind.as_str() {
+            "show" => format!("Opened {} in the human's viewer", msg.path.as_deref().unwrap_or("the diagram")),
+            "highlight" => format!("Highlighted {} in {} for the human", msg.element_ids.join(", "), msg.path.as_deref().unwrap_or("the diagram")),
+            "ask" => format!("Asked the human (question id {})", msg.id),
+            _ => "Sent the message to the human".to_string(),
+        };
+        if live {
+            return Ok((msg, format!("{what}.")));
+        }
+        if msg.kind == "notify" {
+            return Ok((msg, format!("{what}, but the viewer is closed: it will be shown if the app opens in the next {} s and stays in the conversation (get_user_replies).", odg_core::channel::LATE_DELIVERY_SECS)));
+        }
+        let note = match launch_viewer(self.ws.root(), msg.path.as_deref()) {
+            Ok(()) => format!("{what}: the viewer was closed, so ODiagramador is being launched; it shows this as soon as it opens."),
+            Err(e) => format!("{what}, but the viewer is not open and could not be launched ({e}). The human will see it when they open ODiagramador on this folder."),
+        };
+        Ok((msg, note))
     }
 
     /// The standard answer: report text, next step, files, and the most useful image.
@@ -598,6 +728,25 @@ fn image(png: &[u8]) -> Value {
     json!({"type": "image", "mimeType": "image/png", "data": base64::engine::general_purpose::STANDARD.encode(png)})
 }
 
+/// Whether `id` occurs in the source as a whole identifier (not inside a longer word).
+fn mentions_id(src: &str, id: &str) -> bool {
+    let word = |c: char| c.is_alphanumeric() || c == '_' || c == '-';
+    src.match_indices(id).any(|(i, _)| {
+        let before = src[..i].chars().next_back();
+        let after = src[i + id.len()..].chars().next();
+        !before.is_some_and(word) && !after.is_some_and(word)
+    })
+}
+
+/// A list of strings argument (also accepts a single string).
+fn strings(args: &Value, key: &str) -> Vec<String> {
+    match args.get(key) {
+        Some(Value::Array(items)) => items.iter().filter_map(Value::as_str).map(str::to_string).filter(|s| !s.is_empty()).collect(),
+        Some(Value::String(s)) if !s.is_empty() => vec![s.clone()],
+        _ => vec![],
+    }
+}
+
 fn text(t: String) -> Value {
     json!({"content": [{"type": "text", "text": t}]})
 }
@@ -624,11 +773,42 @@ fn pct(s: &str) -> String {
         .collect()
 }
 
+/// Starts the desktop viewer on `workspace` (the message itself reaches it through the workspace inbox).
+fn launch_viewer(workspace: &std::path::Path, path: Option<&str>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        // `odg` sits inside ODiagramador.app, so LaunchServices may take this very process for the running
+        // app and hand it the odiagramador:// URL. When the viewer is not running, start a new instance.
+        let gui_running = std::process::Command::new("pgrep").args(["-x", "ODiagramador"]).output().map(|o| o.status.success()).unwrap_or(false);
+        if !gui_running {
+            let bundle = std::env::current_exe().ok().and_then(|exe| exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app")).map(|p| p.to_path_buf()));
+            let mut cmd = std::process::Command::new("open");
+            cmd.arg("-n");
+            match &bundle {
+                Some(b) => cmd.arg("-a").arg(b),
+                None => cmd.args(["-b", "io.odiagramador.app"]),
+            };
+            cmd.arg("--args").arg("--workspace").arg(workspace);
+            return match cmd.status() {
+                Ok(s) if s.success() => Ok(()),
+                Ok(_) => Err("the ODiagramador app is not installed".into()),
+                Err(e) => Err(e.to_string()),
+            };
+        }
+    }
+    let mut url = format!("odiagramador://open?workspace={}", pct(&workspace.to_string_lossy()));
+    if let Some(p) = path {
+        url.push_str(&format!("&path={}", pct(p)));
+    }
+    open_url(&url)
+}
+
 fn open_url(url: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let r = std::process::Command::new("open").arg(url).status();
+    // not `cmd /C start`: cmd would cut the URL at its `&`
     #[cfg(windows)]
-    let r = std::process::Command::new("cmd").args(["/C", "start", "", url]).status();
+    let r = std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", url]).status();
     #[cfg(all(unix, not(target_os = "macos")))]
     let r = std::process::Command::new("xdg-open").arg(url).status();
     match r {
@@ -653,7 +833,10 @@ fn tool_definitions() -> Value {
     let common = json!({
         "include_image": {"type": "boolean", "description": "Return a PNG (annotated with numbered problem markers when there are problems). Default true."},
         "theme": {"type": "string", "enum": ["default", "dark", "forest", "neutral", "base"]},
-        "lang": {"type": "string", "enum": ["en", "pt-BR"], "description": "Language of messages (default: server setting)"}
+        "lang": {"type": "string", "enum": ["en", "pt-BR"], "description": "Language of messages (default: server setting)"},
+        "show": {"type": "boolean", "description": "Also open the diagram in the human's desktop viewer (write tools; default false). With element_ids/message: highlight those elements with that note."},
+        "element_ids": {"type": "array", "items": {"type": "string"}, "description": "With show=true: elements to highlight"},
+        "message": {"type": "string", "description": "With show=true: note shown to the human next to the diagram"}
     });
     let with = |extra: Value, required: &[&str]| {
         let mut props = common.as_object().unwrap().clone();
@@ -735,10 +918,50 @@ fn tool_definitions() -> Value {
         {"name": "get_syntax_help", "title": "Mermaid syntax help",
          "description": "Offline Mermaid cheat-sheet with a complete example. Topics: overview, flowchart, sequence, class, state, er, gantt, pie, mindmap.",
          "inputSchema": {"type": "object", "properties": {"topic": {"type": "string"}}}, "annotations": ro},
-        {"name": "open_in_viewer", "title": "Show to the human",
-         "description": "Open the diagram in the ODiagramador desktop app so the human can see it.",
+        {"name": "show_diagram", "title": "Show diagram to the human",
+         "description": "Open a diagram in the human's ODiagramador desktop viewer (launching the app if it is closed). Optionally highlight elements and show a note next to them, e.g. \"I added the payment step here\".",
+         "inputSchema": {"type": "object", "properties": {
+            "path": {"type": "string"},
+            "element_ids": {"type": "array", "items": {"type": "string"}, "description": "Node/edge ids to put in evidence (ids as in the source / inspect_diagram)"},
+            "message": {"type": "string", "description": "Short note shown to the human"},
+            "level": {"type": "string", "enum": ["info", "success", "warning", "error"]}}, "required": ["path"]},
+         "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false}},
+        {"name": "highlight_elements", "title": "Highlight elements for the human",
+         "description": "Put elements of a diagram in evidence in the human's viewer: the diagram opens, the elements glow, the rest dims and the view centres on them, with an optional note. Use it to point at what you changed or what you are asking about.",
+         "inputSchema": {"type": "object", "properties": {
+            "path": {"type": "string"},
+            "element_ids": {"type": "array", "items": {"type": "string"}},
+            "message": {"type": "string"},
+            "level": {"type": "string", "enum": ["info", "success", "warning", "error"]}}, "required": ["path", "element_ids"]},
+         "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false}},
+        {"name": "notify_user", "title": "Message the human",
+         "description": "Show a message to the human in the desktop viewer (progress, summary of what you did, a warning). Optionally about a diagram/elements. Does not wait for a reply; use ask_user for questions.",
+         "inputSchema": {"type": "object", "properties": {
+            "message": {"type": "string"},
+            "level": {"type": "string", "enum": ["info", "success", "warning", "error"]},
+            "path": {"type": "string"},
+            "element_ids": {"type": "array", "items": {"type": "string"}}}, "required": ["message"]},
+         "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false}},
+        {"name": "ask_user", "title": "Ask the human",
+         "description": "Ask the human a question in the desktop viewer and wait for the answer (up to wait_seconds, default 60, max 600). Give options for one-click answers; allow_text lets them type instead. Point at a diagram/elements to ask about them. If nobody answers in time you get a question_id: continue and call get_user_replies later.",
+         "inputSchema": {"type": "object", "properties": {
+            "question": {"type": "string"},
+            "options": {"type": "array", "items": {"type": "string"}, "description": "Choices shown as buttons"},
+            "allow_text": {"type": "boolean", "description": "Allow a typed answer besides the options (default true)"},
+            "path": {"type": "string"},
+            "element_ids": {"type": "array", "items": {"type": "string"}},
+            "wait_seconds": {"type": "integer", "minimum": 0, "maximum": 600}}, "required": ["question"]},
+         "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false}},
+        {"name": "get_user_replies", "title": "Read the human's answers",
+         "description": "The answer to a question (question_id), or the recent conversation between agents and the human (questions, answers, notes).",
+         "inputSchema": {"type": "object", "properties": {"question_id": {"type": "string"}, "limit": {"type": "integer"}}}, "annotations": ro},
+        {"name": "get_viewer_status", "title": "Is the human watching?",
+         "description": "Whether the ODiagramador desktop viewer is open on this workspace, which diagram the human is looking at and which element they selected.",
+         "inputSchema": {"type": "object", "properties": {}}, "annotations": ro},
+        {"name": "open_in_viewer", "title": "Show to the human (legacy)",
+         "description": "Same as show_diagram (kept for older prompts).",
          "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
-         "annotations": {"readOnlyHint": true, "openWorldHint": false}}
+         "annotations": {"readOnlyHint": false, "openWorldHint": false}}
     ])
 }
 
@@ -751,6 +974,8 @@ mod tests {
         assert_eq!(slug("Fluxo de Pedidos (v2)"), "fluxo-de-pedidos-v2");
         assert_eq!(slug("  "), "diagram");
         assert_eq!(pct("a b/ç"), "a%20b/%C3%A7");
+        assert!(mentions_id("pay --> ship[Ship order]", "ship"));
+        assert!(!mentions_id("start([Customer places order])", "C"));
     }
 
     #[test]

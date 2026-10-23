@@ -2,6 +2,7 @@
 //! `odg-ffi`, the native desktop apps (SwiftUI, WPF, GTK).
 
 pub mod analyze;
+pub mod channel;
 pub mod construct;
 pub mod edit;
 pub mod engine;

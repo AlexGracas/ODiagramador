@@ -32,6 +32,9 @@ public partial class MainWindow : Window
     private string? _lastPng;
     private readonly Dictionary<string, string> _modified = new();
     private readonly DispatcherTimer _poll = new() { Interval = TimeSpan.FromSeconds(1) };
+    /// <summary>Read position in the agents' message log (null = viewer just opened on this folder).</summary>
+    private ulong? _inboxCursor;
+    private DateTime _presenceAt = DateTime.MinValue;
     private readonly DispatcherTimer _renderDebounce = new() { Interval = TimeSpan.FromMilliseconds(300) };
     private readonly DispatcherTimer _saveDebounce = new() { Interval = TimeSpan.FromMilliseconds(900) };
     private readonly LineTint _tint = new();
@@ -72,6 +75,8 @@ public partial class MainWindow : Window
         Closing += (_, _) =>
         {
             FlushSave();
+            // agents should no longer count on the human seeing their messages
+            if (_workspace is not null) Core.CallOrDefault<JsonNode>("clear_presence", new { workspace = _workspace });
             Remote.Stop();
             Prefs.Save();
         };
@@ -426,6 +431,9 @@ public partial class MainWindow : Window
             case "result":
                 RenderFinished(msg["id"]?.GetValue<int>() ?? 0, msg["result"]?.AsObject());
                 break;
+            case "answer":
+                AnswerAgent(msg["question_id"]?.GetValue<string>(), msg["text"]?.GetValue<string>());
+                break;
             case "select":
                 _selectedElement = msg["element_id"]?.GetValue<string>();
                 ElementTag.Text = _selectedElement ?? "";
@@ -549,7 +557,11 @@ public partial class MainWindow : Window
 
     private void OpenWorkspace(string dir)
     {
+        if (_workspace is not null && _workspace != Path.GetFullPath(dir))
+            Core.CallOrDefault<JsonNode>("clear_presence", new { workspace = _workspace });
         _workspace = Path.GetFullPath(dir);
+        _inboxCursor = null;
+        _presenceAt = DateTime.MinValue;
         App.Log($"open workspace: {_workspace}");
         Prefs.LastWorkspace = _workspace;
         Prefs.Save();
@@ -588,6 +600,7 @@ public partial class MainWindow : Window
     private void Poll()
     {
         if (_workspace is null) return;
+        SyncAgents();
         var list = Core.CallOrDefault<List<DiagramInfo>>("list", new { workspace = _workspace });
         if (list is null) return;
         var changed = list.Where(d => !_modified.TryGetValue(d.Path, out var m) || m != d.Modified).Select(d => d.Path).ToList();
@@ -610,6 +623,80 @@ public partial class MainWindow : Window
                 Render();
             }
         }
+    }
+
+    // ------------------------------------------------------------------ agent ⇄ human (MCP show_diagram, highlight_elements, notify_user, ask_user)
+
+    /// <summary>Tells agents what the human is looking at and delivers their messages to the viewer.</summary>
+    private void SyncAgents()
+    {
+        if (_workspace is null) return;
+        try
+        {
+            if (DateTime.UtcNow - _presenceAt >= TimeSpan.FromSeconds(2))
+            {
+                _presenceAt = DateTime.UtcNow;
+                Core.Run("set_presence", new
+                {
+                    workspace = _workspace, app = "ODiagramador", platform = "windows", version = Updater.CurrentVersion,
+                    path = _selected, element_id = _selectedElement,
+                });
+            }
+            var inbox = Core.Call<JsonNode>("viewer_inbox", new { workspace = _workspace, cursor = _inboxCursor });
+            _inboxCursor = inbox["cursor"]?.GetValue<ulong>();
+            var messages = inbox["messages"]?.AsArray() ?? new JsonArray();
+            foreach (var m in messages)
+                if (m is JsonObject o) DeliverAgentMessage(o);
+            if (messages.Count > 0) RefreshSide();
+        }
+        catch (Exception ex)
+        {
+            App.Log("agent sync failed: " + ex.Message);
+        }
+    }
+
+    private void DeliverAgentMessage(JsonObject m)
+    {
+        var kind = m["kind"]?.GetValue<string>() ?? "";
+        var hasIds = m["element_ids"] is JsonArray { Count: > 0 };
+        var path = m["path"]?.GetValue<string>();
+        App.Log($"agent message: {kind} {path} {m["id"]}");
+        var switched = false;
+        if (path is not null && (kind is "show" or "highlight" || hasIds) && path != _selected)
+        {
+            if ((DiagramList.ItemsSource as List<DiagramInfo>)?.All(d => d.Path != path) ?? true) RefreshList();
+            if ((DiagramList.ItemsSource as List<DiagramInfo>)?.FirstOrDefault(d => d.Path == path) is { } item)
+            {
+                Select(path);
+                _loading = true;
+                DiagramList.SelectedItem = item;
+                _loading = false;
+                switched = true;
+            }
+        }
+        Send(new JsonObject { ["op"] = "agent", ["message"] = m.DeepClone(), ["switched"] = switched });
+        if (kind == "notify") return;
+        // show / highlight / ask: bring the window forward so the human sees it
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+        Topmost = true;
+        Topmost = false;
+    }
+
+    private void AnswerAgent(string? questionId, string? text)
+    {
+        if (_workspace is null || questionId is null || string.IsNullOrWhiteSpace(text)) return;
+        try
+        {
+            Core.Run("answer", new { workspace = _workspace, question_id = questionId, text });
+            App.Log($"answered {questionId}");
+        }
+        catch (Exception ex)
+        {
+            App.Log("answer failed: " + ex);
+            StatusText.Text = ex.Message;
+        }
+        RefreshSide();
     }
 
     private void SetText(string text)

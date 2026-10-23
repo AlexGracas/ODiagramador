@@ -5,6 +5,7 @@
 
 - 🤖 **Servidor MCP** (`odg mcp`): o agente cria/edita diagramas e recebe na mesma resposta o relatório de problemas **e uma imagem** com marcadores numerados nos problemas (ou o código com a linha do erro destacada).
 - 👀 **App desktop nativo**: o humano vê as mudanças do agente ao vivo, navega pelos problemas e deixa **comentários que o agente lê** (`get_feedback`).
+- 💬 **Conversa agente ⇄ usuário**: o agente abre um diagrama no app (`show_diagram`), **destaca elementos** com uma nota (`highlight_elements`), manda avisos (`notify_user`) e **faz perguntas com botões de resposta** (`ask_user`) — a resposta volta para o agente.
 - 🧪 **CLI** (`odg check --json`, `odg render --annotated`) para CI e agentes sem MCP.
 - 🌐 Interface e mensagens em **português e inglês**; códigos de problema estáveis em inglês.
 - 📁 Diagramas são arquivos `.mmd` comuns no seu projeto (versionáveis no git).

@@ -62,6 +62,9 @@ struct State {
     remote: RemoteMcp,
     diagram_font: String,
     update: Option<odg_core::update::UpdateInfo>,
+    /// Read position in the agents' message log (None = viewer just opened on this folder).
+    inbox_cursor: Option<u64>,
+    presence_at: i64,
 }
 
 impl State {
@@ -147,6 +150,8 @@ fn build_ui(app: &adw::Application, args: &[String]) {
         remote: RemoteMcp::default(),
         diagram_font: String::new(),
         update: None,
+        inbox_cursor: None,
+        presence_at: 0,
     }));
 
     // ---- header
@@ -464,6 +469,10 @@ fn wire(ui: &Ui, ucm: &webkit::UserContentManager) {
     ui.window.connect_close_request(move |_| {
         flush_save(&u);
         let mut s = u.state.borrow_mut();
+        // agents should no longer count on the human seeing their messages
+        if let Some(ws) = &s.ws {
+            let _ = ws.clear_presence();
+        }
         s.remote.stop();
         s.prefs.save();
         glib::Propagation::Proceed
@@ -513,6 +522,13 @@ fn on_viewer_message(ui: &Ui, msg: Value) {
         "result" => {
             let id = msg["id"].as_u64().unwrap_or(0);
             render_finished(ui, id, msg["result"].clone());
+        }
+        "answer" => {
+            let (Some(id), Some(text)) = (msg["question_id"].as_str(), msg["text"].as_str()) else { return };
+            if let Some(ws) = &ui.state.borrow().ws {
+                let _ = ws.answer(id, text);
+            }
+            refresh_side(ui);
         }
         "select" => {
             let el = msg["element_id"].as_str().map(str::to_string);
@@ -706,8 +722,76 @@ fn scroll_to_line(ui: &Ui, line: u32) {
 
 // ------------------------------------------------------------------ workspace
 
+// ------------------------------------------------------------------ agent ⇄ human (MCP show_diagram, highlight_elements, notify_user, ask_user)
+
+/// Tells agents what the human is looking at and delivers their messages to the viewer.
+fn sync_agents(ui: &Ui) {
+    let inbox = {
+        let mut s = ui.state.borrow_mut();
+        let Some(ws) = s.ws.clone() else { return };
+        if prefs::now() - s.presence_at >= 2 {
+            s.presence_at = prefs::now();
+            let _ = ws.set_presence(&odg_core::channel::Presence {
+                app: "ODiagramador".into(),
+                version: odg_core::VERSION.into(),
+                platform: "linux".into(),
+                pid: std::process::id(),
+                updated: 0,
+                path: s.selected.clone(),
+                element_id: s.selected_element.clone(),
+            });
+        }
+        let Ok(inbox) = ws.viewer_inbox(s.inbox_cursor) else { return };
+        s.inbox_cursor = Some(inbox.cursor);
+        inbox
+    };
+    for m in &inbox.messages {
+        deliver_agent_message(ui, m);
+    }
+    if !inbox.messages.is_empty() {
+        refresh_side(ui);
+    }
+}
+
+fn deliver_agent_message(ui: &Ui, m: &odg_core::channel::Message) {
+    let mut switched = false;
+    if let Some(path) = &m.path {
+        let wants_switch = m.kind == "show" || m.kind == "highlight" || !m.element_ids.is_empty();
+        let current = ui.state.borrow().selected.clone();
+        if wants_switch && current.as_deref() != Some(path.as_str()) {
+            if !ui.state.borrow().diagrams.iter().any(|d| &d.path == path) {
+                refresh_list(ui);
+            }
+            if ui.state.borrow().diagrams.iter().any(|d| &d.path == path) {
+                select(ui, Some(path.clone()));
+                let mut i = 0;
+                while let Some(row) = ui.list.row_at_index(i) {
+                    if row.widget_name() == path.as_str() {
+                        ui.list.select_row(Some(&row));
+                        break;
+                    }
+                    i += 1;
+                }
+                switched = true;
+            }
+        }
+    }
+    send(ui, json!({"op": "agent", "message": m, "switched": switched}));
+    if m.kind != "notify" {
+        ui.window.present();
+    }
+}
+
 fn open_workspace(ui: &Ui, dir: PathBuf) {
     let Ok(ws) = Workspace::open(&dir) else { return };
+    {
+        let mut s = ui.state.borrow_mut();
+        if let Some(old) = s.ws.as_ref().filter(|o| o.root() != ws.root()) {
+            let _ = old.clear_presence();
+        }
+        s.inbox_cursor = None;
+        s.presence_at = 0;
+    }
     let config = ws.config();
     {
         let mut s = ui.state.borrow_mut();
@@ -892,6 +976,7 @@ fn flush_save(ui: &Ui) {
 
 fn poll(ui: &Ui) {
     ui.state.borrow_mut().remote.poll();
+    sync_agents(ui);
     let (list, selected) = {
         let s = ui.state.borrow();
         let Some(ws) = &s.ws else { return };

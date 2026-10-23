@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         MainActor.assumeIsolated { RemoteMCP.current?.stop() }
+        // agents should no longer count on the human seeing their messages
+        if let ws = UserDefaults.standard.string(forKey: "workspace") { try? Core.run("clear_presence", ["workspace": ws]) }
     }
 }
 
