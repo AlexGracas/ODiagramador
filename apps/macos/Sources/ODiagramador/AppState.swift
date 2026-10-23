@@ -112,7 +112,8 @@ final class AppState: ObservableObject {
         if let first = diagrams.first { select(first.path) }
         pollTimer?.invalidate()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.poll() }
+            // re-capture weakly: older Swift compilers reject using the captured `self` var here
+            Task { @MainActor [weak self] in self?.poll() }
         }
     }
 
