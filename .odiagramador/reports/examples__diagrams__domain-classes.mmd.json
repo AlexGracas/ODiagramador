@@ -1,0 +1,27 @@
+{
+  "path": "examples/diagrams/domain-classes.mmd",
+  "engine": "mermaid",
+  "diagram_type": "classDiagram",
+  "valid": true,
+  "error_count": 0,
+  "warning_count": 0,
+  "info_count": 0,
+  "summary": "Valid classDiagram diagram: 3 nodes, 2 edges. No visual problems found.",
+  "problems": [],
+  "stats": {
+    "nodes": 3,
+    "edges": 2,
+    "groups": 0,
+    "width": 708.0,
+    "height": 163.0,
+    "lines": 17
+  },
+  "previews": {
+    "svg": ".odiagramador/previews/examples__diagrams__domain-classes.mmd.svg",
+    "png": ".odiagramador/previews/examples__diagrams__domain-classes.mmd.png"
+  },
+  "source_sha256": "bc1416a2b83406434a2e57fb8acfab00fe03ec78b0a7859347050b7839110e92",
+  "lang": "en",
+  "generated_at": "2026-10-23T20:38:44.593729Z",
+  "duration_ms": 90
+}

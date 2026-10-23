@@ -19,6 +19,28 @@
   "use strict";
 
   var FONT = 'Arial, "Liberation Sans", Helvetica, sans-serif';
+
+  // WebKit (macOS / Linux) sometimes reports a 0x0 getBBox for text Mermaid measures off-screen (e.g. Event
+  // Modeling), and Mermaid then aborts with "svg element not in render tree". Chromium measures it fine.
+  // Fall back to the client box, or to an estimate from the font, only for <text>/<tspan> that report nothing.
+  (function () {
+    var proto = window.SVGGraphicsElement && SVGGraphicsElement.prototype;
+    if (!proto || proto.__odgBBox) return;
+    var native = proto.getBBox;
+    proto.getBBox = function () {
+      var b = native.apply(this, arguments);
+      var tag = this.tagName && this.tagName.toLowerCase();
+      if (b.width > 0 || b.height > 0 || (tag !== "text" && tag !== "tspan")) return b;
+      var text = (this.textContent || "").replace(/\u200b/g, "");
+      var cs = window.getComputedStyle(this);
+      var size = parseFloat(cs.fontSize) || 16;
+      var r = this.getBoundingClientRect();
+      var width = r.width > 0 ? r.width : text.length * size * 0.6;
+      var height = r.height > 0 ? r.height : size * 1.2;
+      return { x: b.x, y: b.y - size, width: width, height: height, top: b.y - size, left: b.x, right: b.x + width, bottom: b.y - size + height };
+    };
+    proto.__odgBBox = true;
+  })();
   var MAX_CANVAS_PIXELS = 16000000; // WebKit canvas limit is ~16.7M px
   var params = new URLSearchParams(location.search);
   var mode = params.get("mode") || "headless";
@@ -364,6 +386,61 @@
     });
   }
 
+  /** Text of an HTML label: <br> and block elements become line breaks. */
+  function htmlLines(el) {
+    var out = [""];
+    (function walk(n) {
+      for (var c = n.firstChild; c; c = c.nextSibling) {
+        if (c.nodeType === 3) out[out.length - 1] += c.nodeValue;
+        else if (c.nodeType === 1) {
+          var tag = c.tagName.toLowerCase();
+          var block = tag === "br" || tag === "div" || tag === "p" || tag === "li";
+          if (block && out[out.length - 1].trim()) out.push("");
+          if (tag !== "br") walk(c);
+          if (block && out[out.length - 1].trim()) out.push("");
+        }
+      }
+    })(el);
+    return out.map(function (l) { return l.replace(/\s+/g, " ").trim(); }).filter(Boolean);
+  }
+
+  /**
+   * WebKit refuses to export a canvas that drew an SVG with <foreignObject> (HTML labels used by some
+   * diagram types). For the PNG only, swap each HTML label for SVG text at its centre, in its font.
+   */
+  function foreignObjectsAsText(svg) {
+    var NS = "http://www.w3.org/2000/svg";
+    var clone = svg.cloneNode(true);
+    var live = svg.querySelectorAll("foreignObject");
+    var copies = clone.querySelectorAll("foreignObject");
+    for (var i = 0; i < live.length && i < copies.length; i++) {
+      var fo = live[i];
+      var w = parseFloat(fo.getAttribute("width")) || 0, h = parseFloat(fo.getAttribute("height")) || 0;
+      var cx = (parseFloat(fo.getAttribute("x")) || 0) + w / 2, cy = (parseFloat(fo.getAttribute("y")) || 0) + h / 2;
+      var lines = htmlLines(fo);
+      var styled = fo.querySelector("span, p, div") || fo.firstElementChild || fo;
+      var cs = window.getComputedStyle(styled);
+      var size = parseFloat(cs.fontSize) || 14;
+      var t = document.createElementNS(NS, "text");
+      t.setAttribute("text-anchor", "middle");
+      t.setAttribute("font-size", size);
+      t.setAttribute("font-family", cs.fontFamily || FONT);
+      if (cs.fontWeight && cs.fontWeight !== "400" && cs.fontWeight !== "normal") t.setAttribute("font-weight", cs.fontWeight);
+      t.setAttribute("fill", cs.color || "#333");
+      var lh = size * 1.25, y0 = cy - ((lines.length - 1) * lh) / 2;
+      lines.forEach(function (line, k) {
+        var span = document.createElementNS(NS, "tspan");
+        span.setAttribute("x", cx);
+        span.setAttribute("y", y0 + k * lh);
+        span.setAttribute("dominant-baseline", "central");
+        span.textContent = line;
+        t.appendChild(span);
+      });
+      copies[i].parentNode.replaceChild(t, copies[i]);
+    }
+    return serialize(clone);
+  }
+
   // ---------------------------------------------------------------- process
   async function processDiagram(req) {
     var t0 = performance.now();
@@ -374,8 +451,19 @@
       view_box: null, model: { nodes: [], edges: [], groups: [] }, has_foreign_object: false,
       mermaid_version: (window.mermaid && mermaid.version) || null, duration_ms: 0
     };
+    if (window.odgReady) await window.odgReady; // external diagrams (ZenUML) registered
     var dirs = parseDirectives(source);
     var layoutName = LAYOUTS[dirs.mode] || null;
+    // ELK (and dragging / exact positions) only for graph diagrams; every other type keeps Mermaid's own layout
+    if (layoutName) {
+      var detected = null;
+      try { detected = mermaid.detectType(source); } catch (e) { /* unknown type: the parse below reports it */ }
+      if (detected && !GRAPH_TYPES.test(detected)) {
+        out.layout_fallback = dirs.mode;
+        layoutName = null;
+        dirs.mode = "auto";
+      }
+    }
     if (window.odgLayout) {
       window.odgLayout.hints.pos = dirs.pos;
       window.odgLayout.hints.layer = dirs.layer;
@@ -427,7 +515,14 @@
     if (req.png) {
       try {
         var bg = req.background || (req.theme === "dark" ? "#0d1117" : "#ffffff");
-        var r = await rasterize(out.svg, req.scale || 2, bg);
+        var r;
+        try {
+          r = await rasterize(out.svg, req.scale || 2, bg);
+        } catch (e) {
+          if (!out.has_foreign_object) throw e;
+          r = await rasterize(foreignObjectsAsText(svg), req.scale || 2, bg);
+          out.png_text_fallback = true;
+        }
         out.png = r.png;
         out.png_width = r.width;
         out.png_height = r.height;

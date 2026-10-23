@@ -1,0 +1,77 @@
+{
+  "path": "examples/diagrams/layout-problems.mmd",
+  "engine": "mermaid",
+  "diagram_type": "flowchart-v2",
+  "valid": true,
+  "error_count": 0,
+  "warning_count": 2,
+  "info_count": 1,
+  "summary": "Valid flowchart-v2 diagram: 6 nodes, 4 edges. 2 warnings.",
+  "problems": [
+    {
+      "index": 1,
+      "severity": "warning",
+      "code": "W_ORPHAN_NODE",
+      "message": "\"Legacy reporting job that nobody remembers who owns but still runs every night\" is not connected to anything.",
+      "hint": "Connect it with an edge (e.g. `legacy --> Other`) or remove it if it is leftover.",
+      "line": 6,
+      "element_id": "legacy",
+      "bbox": {
+        "x": 8.0,
+        "y": 186.0,
+        "w": 152.0,
+        "h": 112.3
+      }
+    },
+    {
+      "index": 2,
+      "severity": "warning",
+      "code": "W_DUPLICATE_LABEL",
+      "message": "Different elements share the label \"Users DB\": users, users2.",
+      "hint": "If they are the same element, reuse a single id; otherwise make the labels distinct.",
+      "line": 3,
+      "element_id": "users",
+      "related": [
+        "users2"
+      ],
+      "bbox": {
+        "x": 412.0,
+        "y": 8.0,
+        "w": 144.0,
+        "h": 214.0
+      }
+    },
+    {
+      "index": 3,
+      "severity": "info",
+      "code": "W_LONG_LABEL",
+      "message": "The label of \"legacy\" is very long (78 characters).",
+      "hint": "Keep labels under 60 characters; break lines with `<br/>` or move details to a note.",
+      "line": 6,
+      "element_id": "legacy",
+      "bbox": {
+        "x": 8.0,
+        "y": 186.0,
+        "w": 152.0,
+        "h": 112.3
+      }
+    }
+  ],
+  "stats": {
+    "nodes": 6,
+    "edges": 4,
+    "groups": 0,
+    "width": 564.0,
+    "height": 307.0,
+    "lines": 6
+  },
+  "previews": {
+    "svg": ".odiagramador/previews/examples__diagrams__layout-problems.mmd.svg",
+    "png": ".odiagramador/previews/examples__diagrams__layout-problems.mmd.png",
+    "annotated_png": ".odiagramador/previews/examples__diagrams__layout-problems.mmd.annotated.png"
+  },
+  "source_sha256": "ce00aa77b39064b57abac78712269ff356e6702d9b39e3157e6841ce7a31e2c0",
+  "lang": "en",
+  "generated_at": "2026-10-23T20:38:44.64178Z",
+  "duration_ms": 43
+}

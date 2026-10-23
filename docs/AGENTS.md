@@ -6,7 +6,7 @@ ODiagramador gives an agent three things a plain Mermaid file cannot:
 2. **Eyes** — every write returns a PNG. When something is wrong the image carries **numbered markers that match the problem list** (or, if the diagram does not parse, a picture of the source with the bad line highlighted).
 3. **A channel to the human** — the person watching the desktop app leaves comments on diagrams/elements; the agent reads and resolves them.
 
-Everything runs offline (Mermaid 11.17.2 is embedded) and diagrams are plain `.mmd` files in the workspace, versionable with git.
+Everything runs offline (Mermaid 12.2.0 with the ZenUML plugin is embedded: every Mermaid diagram type, see `get_syntax_help("overview")`) and diagrams are plain `.mmd` files in the workspace, versionable with git.
 
 ## 1. Configure the MCP server
 
@@ -53,7 +53,7 @@ copy ready-made configs for each client. Traffic is plain HTTP: outside a truste
 
 | Tool | Use it to |
 |---|---|
-| `get_syntax_help(topic)` | Read an offline cheat-sheet (`overview`, `flowchart`, `sequence`, `class`, `state`, `er`, `gantt`, `pie`, `mindmap`) before writing. |
+| `get_syntax_help(topic)` | Offline syntax with examples for every Mermaid type (`overview` lists them all; `flowchart`, `usecase`, `c4`, `venn`, `wardley`, … or any header such as `xychart-beta`; add ` full` for the official reference digest). |
 | `create_diagram(name\|path, source)` | Save a new diagram → report + image. |
 | `update_diagram(path, source)` | Replace the whole file → report + image. |
 | `patch_diagram(path, edits[{old_text,new_text}])` | Small fixes; each `old_text` must occur exactly once. |
@@ -130,12 +130,12 @@ instead of rewriting the source. Coordinates are node centres in the same space 
 | `W_LONG_LABEL` | info | Label over 60 characters. |
 | `W_TOO_LARGE` | info | More than 60 nodes / 100 edges — consider splitting. |
 | `W_WIDE` / `W_TALL` | info | Extreme aspect ratio — change direction. |
-| `W_FOREIGN_OBJECT` | info | HTML labels; PNG may miss text (use SVG). |
+| `W_FOREIGN_OBJECT` | info | HTML labels; the PNG draws them as plain text (SVG / viewer are exact). |
 | `W_RASTER` | warning | PNG could not be produced. |
 | `W_LAYOUT_MODE` | warning | Unknown `%% @odg layout` mode. |
 | `W_LAYOUT_UNKNOWN_ID` | warning | A `%% @odg pos/layer` line names a node that does not exist. |
 | `W_LAYOUT_IGNORED` | info | Positions given while the mode is `auto`/`elk`. |
-| `W_LAYOUT_UNSUPPORTED` | info | Layout comments on a diagram type without graph layout (sequence, gantt…). |
+| `W_LAYOUT_UNSUPPORTED` | info | Layout comments on a diagram type without graph layout (sequence, gantt, pie…): Mermaid's own layout is used. |
 
 Codes are stable English identifiers; `message` and `hint` follow the configured language.
 

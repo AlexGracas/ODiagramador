@@ -317,7 +317,10 @@ final class AppState: ObservableObject {
         render()
     }
 
-    static let diagramKinds = ["flowchart", "sequence", "class", "state", "er"]
+    /// Every Mermaid diagram type (from the core), labelled in the current language.
+    var diagramKinds: [DiagramKind] {
+        (try? Core.call("diagram_kinds", ["lang": lang], as: [DiagramKind].self)) ?? [DiagramKind(kind: "flowchart", label: "Flowchart", graph: true)]
+    }
 
     func createDiagram(named name: String, kind: String = "flowchart") {
         guard let ws = workspace else { return }

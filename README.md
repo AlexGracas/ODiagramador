@@ -9,6 +9,7 @@
 - 🧪 **CLI** (`odg check --json`, `odg render --annotated`) para CI e agentes sem MCP.
 - 🌐 Interface e mensagens em **português e inglês**; códigos de problema estáveis em inglês.
 - 📁 Diagramas são arquivos `.mmd` comuns no seu projeto (versionáveis no git).
+- 🧭 **Todos os tipos de diagrama do Mermaid 12.2** (33): fluxograma, sequência, classes, estados, ER, casos de uso, requisitos, C4, arquitetura, blocos, raias, ZenUML, Gantt, linha do tempo, jornada, Kanban, Git, mapa mental, árvore, Ishikawa, event modeling, fluxo de agentes, railroad, pacote, pizza, XY, quadrantes, radar, Sankey, treemap, Venn, Wardley e Cynefin. O ELK (e arrastar/posições exatas) vale para os diagramas de grafo; os demais usam o layout do próprio Mermaid.
 - ⚙️ **Configurações**: idioma, modo claro/escuro, fontes do editor e do diagrama, **MCP remoto** por uma porta (com token) e **atualização automática** a partir dos releases do GitHub.
 - 🧩 **Construtores**: ao criar um diagrama você escolhe o tipo (fluxograma, sequência, classes, estados, ER) e a prévia ganha uma paleta com os elementos daquele tipo (nó, decisão, ligação, grupo, participante, mensagem, bloco alt/loop, classe, relação, estado, transição, entidade…) e a **direção** (TB/BT/LR/RL). O texto Mermaid é gerado pelo núcleo e aparece no editor. **Clicar num elemento** abre o inspetor para renomear, trocar a forma ou excluir (as ligações do elemento saem junto; os vizinhos ficam); clicar numa ligação permite editar o texto ou excluí-la.
 - ✋ **Correção de layout** em fluxogramas, estados, classes, ER e requisitos: ELK automático, **arrastar nós** (ELK interativo, o arraste vira dica) ou **posições exatas**. As posições ficam em comentários `%% @odg`, e o arquivo continua Mermaid válido em qualquer outro lugar ([docs/syntax/layout.md](docs/syntax/layout.md)).
@@ -24,7 +25,7 @@ As instruções de instalação estão nas notas do release (os apps ainda não 
 ## Arquitetura / Architecture
 
 ```
-render-kit/ (HTML+JS; bundle offline Mermaid 11.17.2 + ELK + layouts próprios) ← TODAS as WebViews e o headless
+render-kit/ (HTML+JS; bundle offline Mermaid 12.2.0 + ZenUML + ELK + layouts próprios) ← TODAS as WebViews e o headless
 crates/odg-core    Rust: modelo neutro, lint, relatório, workspace, i18n (Fluent), cheat-sheets
 crates/odg-render  Rust: WebView oculta (tao + wry) → render headless para CLI/MCP
 crates/odg-cli     Rust: binário `odg` (mcp, check, render, watch, mcp-config)
@@ -99,4 +100,4 @@ Guia completo para agentes: [docs/AGENTS.md](docs/AGENTS.md) · Roteiro UML: [do
 
 Licença / License: [MIT](LICENSE).
 
-Componentes de terceiros: Mermaid © its contributors (MIT) — `render-kit/vendor/mermaid.LICENSE` · ELK/elkjs © Kiel University and others (EPL-2.0) — `render-kit/vendor/elkjs.LICENSE`.
+Componentes de terceiros: Mermaid © its contributors (MIT) — `render-kit/vendor/mermaid.LICENSE`; resumos da sintaxe em `docs/syntax/mermaid` vêm da documentação oficial do Mermaid (MIT) · ZenUML (MIT) — `render-kit/vendor/zenuml.LICENSE` · ELK/elkjs © Kiel University and others (EPL-2.0) — `render-kit/vendor/elkjs.LICENSE`.

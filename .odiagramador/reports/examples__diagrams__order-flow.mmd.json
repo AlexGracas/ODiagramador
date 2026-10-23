@@ -1,0 +1,27 @@
+{
+  "path": "examples/diagrams/order-flow.mmd",
+  "engine": "mermaid",
+  "diagram_type": "flowchart-v2",
+  "valid": true,
+  "error_count": 0,
+  "warning_count": 0,
+  "info_count": 0,
+  "summary": "Valid flowchart-v2 diagram: 7 nodes, 7 edges. No visual problems found.",
+  "problems": [],
+  "stats": {
+    "nodes": 7,
+    "edges": 7,
+    "groups": 0,
+    "width": 1063.0,
+    "height": 234.0,
+    "lines": 11
+  },
+  "previews": {
+    "svg": ".odiagramador/previews/examples__diagrams__order-flow.mmd.svg",
+    "png": ".odiagramador/previews/examples__diagrams__order-flow.mmd.png"
+  },
+  "source_sha256": "c02491c0fb1a351eaf9345e836bbb30630e510a13dd84abd767c25958b06d93c",
+  "lang": "en",
+  "generated_at": "2026-10-23T20:38:44.721475Z",
+  "duration_ms": 58
+}

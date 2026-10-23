@@ -1,0 +1,5 @@
+{"ts":"2026-10-23T20:38:44.420273Z","actor":"cli","action":"validate","path":"examples/diagrams/broken-syntax.mmd","valid":false,"errors":1,"warnings":0}
+{"ts":"2026-10-23T20:38:44.502067Z","actor":"cli","action":"validate","path":"examples/diagrams/checkout-sequence.mmd","valid":true,"errors":0,"warnings":0}
+{"ts":"2026-10-23T20:38:44.594959Z","actor":"cli","action":"validate","path":"examples/diagrams/domain-classes.mmd","valid":true,"errors":0,"warnings":0}
+{"ts":"2026-10-23T20:38:44.662823Z","actor":"cli","action":"validate","path":"examples/diagrams/layout-problems.mmd","valid":true,"errors":0,"warnings":2}
+{"ts":"2026-10-23T20:38:44.722354Z","actor":"cli","action":"validate","path":"examples/diagrams/order-flow.mmd","valid":true,"errors":0,"warnings":0}

@@ -133,6 +133,7 @@ pub fn invoke(method: &str, a: &Value) -> R {
             Ok(Value::String(odg_core::edit::apply(arg(a, "source")?, arg(a, "action")?, &params)?))
         }
         "template" => Ok(json!(odg_core::construct::template(arg(a, "kind")?, lang(a)))),
+        "diagram_kinds" => to_value(odg_core::kinds::list(lang(a))),
         "syntax_help" => Ok(json!(syntax::help(opt(a, "topic").unwrap_or("overview")))),
         "list" => to_value(ws(a)?.list().map_err(|e| e.to_string())?),
         "read" => Ok(Value::String(ws(a)?.read(arg(a, "path")?).map_err(|e| e.to_string())?)),

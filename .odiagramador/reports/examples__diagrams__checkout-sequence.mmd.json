@@ -1,0 +1,27 @@
+{
+  "path": "examples/diagrams/checkout-sequence.mmd",
+  "engine": "mermaid",
+  "diagram_type": "sequence",
+  "valid": true,
+  "error_count": 0,
+  "warning_count": 0,
+  "info_count": 0,
+  "summary": "Valid sequence diagram: 4 nodes, 8 edges. No visual problems found.",
+  "problems": [],
+  "stats": {
+    "nodes": 4,
+    "edges": 8,
+    "groups": 0,
+    "width": 884.0,
+    "height": 687.0,
+    "lines": 17
+  },
+  "previews": {
+    "svg": ".odiagramador/previews/examples__diagrams__checkout-sequence.mmd.svg",
+    "png": ".odiagramador/previews/examples__diagrams__checkout-sequence.mmd.png"
+  },
+  "source_sha256": "a7454d550cea032a6a75e56a7160b8e1d9043b4779d5b7c1a3d76520bfccb461",
+  "lang": "en",
+  "generated_at": "2026-10-23T20:38:44.500901Z",
+  "duration_ms": 80
+}

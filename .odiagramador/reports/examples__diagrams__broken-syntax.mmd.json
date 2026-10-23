@@ -1,0 +1,35 @@
+{
+  "path": "examples/diagrams/broken-syntax.mmd",
+  "engine": "mermaid",
+  "diagram_type": null,
+  "valid": false,
+  "error_count": 1,
+  "warning_count": 0,
+  "info_count": 0,
+  "summary": "Invalid diagram: 1 error(s). Fix the first error and validate again.",
+  "problems": [
+    {
+      "index": 1,
+      "severity": "error",
+      "code": "E_PARSE",
+      "message": "Syntax error at line 3: unexpected '|'",
+      "hint": "Line 3 opens '[' and never closes it: add ']'. Check line 3 and the line before it. Expected one of: ] (SQE), TAGEND, text (UNICODE_TEXT), text (TEXT), TAGSTART. [3: `B -->|yes| C[Save`]",
+      "line": 3
+    }
+  ],
+  "stats": {
+    "nodes": 0,
+    "edges": 0,
+    "groups": 0,
+    "width": 0.0,
+    "height": 0.0,
+    "lines": 5
+  },
+  "previews": {
+    "annotated_png": ".odiagramador/previews/examples__diagrams__broken-syntax.mmd.annotated.png"
+  },
+  "source_sha256": "cbc6a42a58c64e576f89180eece7011b6df69c53f7f8d135c5949560a3cf5f5a",
+  "lang": "en",
+  "generated_at": "2026-10-23T20:38:44.298186Z",
+  "duration_ms": 217
+}

@@ -261,7 +261,7 @@ flowchart TD
 
 | Peça | Onde |
 |---|---|
-| Bundle offline: Mermaid 11.17.2 (ESM) + elkjs 0.9.3 + layouts próprios (4,96 MB, gerado com esbuild) | `render-kit/vendor/mermaid-odg.min.js` · fontes em `render-kit/src/` · `scripts/build-render-kit.sh` |
+| Bundle offline: Mermaid 12.2.0 (ESM) + ZenUML + elkjs 0.9.3 + layouts próprios (8,5 MB, gerado com esbuild; no Mermaid 12 o `createCommonLayoutRenderer` saiu da API pública e o script aponta para o módulo interno) | `render-kit/vendor/mermaid-odg.min.js` · fontes em `render-kit/src/` · `scripts/build-render-kit.sh` |
 | Layouts `elk` (também responde a `layout: elk` no front matter, offline), `odg-interactive` e `odg-exact` | `render-kit/src/odg-layouts.mjs` |
 | Leitura das diretivas `%% @odg`, arrastar nós e menu de layout no viewer (os 3 apps usam o mesmo) | `render-kit/bridge.js`, `index.html` |
 | Edição das diretivas e lint (`W_LAYOUT_*`) no núcleo; `layout_edit` na FFI; `arrange_diagram` no MCP | `crates/odg-core/src/source.rs`, `lint.rs`, `crates/odg-ffi`, `crates/odg-cli/src/mcp.rs` |

@@ -23,8 +23,8 @@
  *   edit             {source, action, params}           -> new source (inspector)
  *                    action: rename {id,label} | shape {id,shape} | delete {id}
  *                            | edge_label {from,to,index,label} | edge_delete {from,to,index}
- *   template         {kind, lang?}                      -> starter text | null
- *                    kind: flowchart | sequence | class | state | er
+ *   template         {kind, lang?}                      -> starter text | null (any kind from diagram_kinds)
+ *   diagram_kinds    {lang?}                            -> [{kind, label, graph}]  every Mermaid diagram type
  *   syntax_help      {topic}                            -> markdown | null
  *   list             {workspace}                        -> DiagramInfo[]
  *   read             {workspace, path}                  -> string

@@ -14,26 +14,35 @@ const TOPICS: &[(&str, &str)] = &[
 ];
 
 pub fn topics() -> Vec<&'static str> {
-    TOPICS.iter().map(|(k, _)| *k).collect()
+    let mut t = vec!["overview", "layout"];
+    t.extend(crate::kinds::KINDS.iter().map(|k| k.id));
+    t
 }
 
-/// Accepts topic names and Mermaid headers/types ("sequenceDiagram", "flowchart-v2", "graph", ...).
-pub fn help(topic: &str) -> Option<&'static str> {
+/// Accepts topic names and Mermaid headers/types ("sequenceDiagram", "flowchart-v2", "xychart-beta", ...).
+/// Types with a hand-written cheat-sheet return it; every other type returns the digest of the official
+/// Mermaid docs. `"<type> full"` (or `"reference <type>"`) always returns the official digest.
+pub fn help(topic: &str) -> Option<String> {
     let t = topic.trim().to_ascii_lowercase();
-    let key = match t.as_str() {
-        "" | "all" | "overview" | "index" => "overview",
-        s if s.starts_with("flowchart") || s.starts_with("graph") => "flowchart",
-        s if s.starts_with("sequence") => "sequence",
-        s if s.starts_with("class") => "class",
-        s if s.starts_with("state") => "state",
-        s if s.starts_with("er") => "er",
-        s if s.starts_with("gantt") => "gantt",
-        s if s.starts_with("pie") => "pie",
-        s if s.starts_with("mindmap") => "mindmap",
-        s if s.starts_with("layout") || s.starts_with("elk") || s.starts_with("position") => "layout",
-        _ => return None,
+    let (t, full) = match (t.strip_suffix(" full"), t.strip_prefix("reference ")) {
+        (Some(x), _) | (_, Some(x)) => (x.trim().to_string(), true),
+        _ => (t, false),
     };
-    TOPICS.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
+    let curated = match t.as_str() {
+        "" | "all" | "overview" | "index" | "types" => Some("overview"),
+        s if s.starts_with("layout") || s.starts_with("elk") || s.starts_with("position") => Some("layout"),
+        _ => None,
+    };
+    if let Some(key) = curated {
+        return TOPICS.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string());
+    }
+    let kind = crate::kinds::find(&t)?;
+    if !full {
+        if let Some((_, sheet)) = TOPICS.iter().find(|(k, _)| *k == kind.id) {
+            return Some(format!("{sheet}\n---\nFull official reference: get_syntax_help(\"{} full\").\n", kind.id));
+        }
+    }
+    Some(kind.reference.to_string())
 }
 
 #[cfg(test)]
@@ -43,6 +52,9 @@ mod tests {
         assert!(super::help("sequenceDiagram").unwrap().contains("autonumber"));
         assert!(super::help("flowchart-v2").unwrap().starts_with("# flowchart"));
         assert!(super::help("erDiagram").unwrap().starts_with("# erDiagram"));
-        assert!(super::help("venn").is_none());
+        assert!(super::help("venn").unwrap().contains("venn-beta"));
+        assert!(super::help("quadrantChart").unwrap().contains("quadrantChart"));
+        assert!(super::help("flowchart full").unwrap().contains("Digest of Mermaid"));
+        assert!(super::help("nonsense").is_none());
     }
 }

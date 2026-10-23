@@ -50,8 +50,8 @@ hint-W_WIDE = Use a top-to-bottom direction (`flowchart TB`) or split long chain
 problem-W_TALL = The diagram is very tall ({ $width }×{ $height } px).
 hint-W_TALL = Use a left-to-right direction (`flowchart LR`) or split the diagram.
 
-problem-W_FOREIGN_OBJECT = This diagram type uses HTML labels; the PNG preview may miss text.
-hint-W_FOREIGN_OBJECT = Prefer the SVG preview for this diagram.
+problem-W_FOREIGN_OBJECT = This diagram type uses HTML labels; in the PNG preview they are drawn as plain text.
+hint-W_FOREIGN_OBJECT = The SVG preview and the desktop viewer show them exactly.
 
 problem-W_RASTER = The PNG preview could not be produced: { $detail }
 hint-W_RASTER = Use the SVG preview instead.
@@ -65,8 +65,8 @@ hint-W_LAYOUT_UNKNOWN_ID = Fix the id or remove the `%% @odg` line (ids are case
 problem-W_LAYOUT_IGNORED = Node positions are ignored in layout mode "{ $mode }".
 hint-W_LAYOUT_IGNORED = Add `%% @odg layout elk-interactive` (positions as hints) or `%% @odg layout exact` (exact positions).
 
-problem-W_LAYOUT_UNSUPPORTED = Layout comments have no effect on { $type } diagrams.
-hint-W_LAYOUT_UNSUPPORTED = Positions work on flowchart, state, class, ER and requirement diagrams.
+problem-W_LAYOUT_UNSUPPORTED = Layout comments have no effect on { $type } diagrams: ELK only lays out graph diagrams, so Mermaid's own layout is used.
+hint-W_LAYOUT_UNSUPPORTED = ELK, dragging and exact positions work on flowchart, state, class, ER and requirement diagrams; remove the `%% @odg` lines here.
 
 ## Summaries
 

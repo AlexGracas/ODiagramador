@@ -62,6 +62,12 @@ enum Core {
 
 // MARK: - Models (mirror odg-core's JSON)
 
+struct DiagramKind: Codable, Hashable {
+    var kind: String
+    var label: String
+    var graph: Bool
+}
+
 struct BBox: Codable, Hashable {
     var x: Double
     var y: Double

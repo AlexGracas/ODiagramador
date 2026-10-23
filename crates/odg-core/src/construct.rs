@@ -234,11 +234,15 @@ pub fn template(kind: &str, lang: crate::Lang) -> Option<String> {
         "class" => "classDiagram\n    class Pedido {\n        +String id\n        +total() Money\n    }\n    class Cliente {\n        +String nome\n    }\n    Cliente \"1\" --> \"*\" Pedido : faz\n".to_string(),
         "state" => "stateDiagram-v2\n    [*] --> Aberto\n    Aberto --> Fechado : concluir\n    Fechado --> [*]\n".to_string(),
         "er" => "erDiagram\n    CLIENTE ||--o{ PEDIDO : faz\n    CLIENTE {\n        int id PK\n        string nome\n    }\n    PEDIDO {\n        int id PK\n        int cliente_id FK\n    }\n".to_string(),
-        _ => return None,
+        // every other Mermaid type starts from its official docs example
+        other => return crate::kinds::find(other).and_then(|k| k.example()),
     })
 }
 
-pub const TEMPLATE_KINDS: &[&str] = &["flowchart", "sequence", "class", "state", "er"];
+/// Kinds offered by "new diagram" (all Mermaid diagram types; see `kinds::KINDS`).
+pub fn template_kinds() -> Vec<&'static str> {
+    crate::kinds::KINDS.iter().map(|k| k.id).collect()
+}
 
 /// Applies a constructor. `construct` ids: `direction`, `flow.node`, `flow.edge`, `flow.subgraph`,
 /// `seq.participant`, `seq.message`, `seq.block`, `seq.note`, `seq.autonumber`, `class.class`,

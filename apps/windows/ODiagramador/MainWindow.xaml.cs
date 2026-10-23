@@ -787,9 +787,11 @@ public partial class MainWindow : Window
     private void OnNewDiagram(object sender, RoutedEventArgs e)
     {
         if (_workspace is null) return;
-        var kinds = new[] { "flowchart", "sequence", "class", "state", "er" };
+        // every Mermaid diagram type, labelled by the core in the current language
+        var kinds = Core.CallOrDefault<List<DiagramKind>>("diagram_kinds", new { lang = _lang })
+                    ?? new List<DiagramKind> { new("flowchart", "Flowchart", true) };
         var answer = Prompt.AskWithChoice(this, T("ui-new-diagram"), T("ui-new-diagram-type"),
-            kinds.Select(k => (k, T("ui-type-" + k))).ToArray(), T("ui-new-diagram-name"), T("ui-create"), T("ui-cancel"));
+            kinds.Select(k => (k.Kind, k.Label)).ToArray(), T("ui-new-diagram-name"), T("ui-create"), T("ui-cancel"));
         if (answer is null || string.IsNullOrWhiteSpace(answer.Value.Text)) return;
         var (kind, name) = answer.Value;
         var slug = string.Join("-", System.Text.RegularExpressions.Regex.Split(name.ToLowerInvariant(), @"[^\p{L}\p{N}]+").Where(p => p.Length > 0));

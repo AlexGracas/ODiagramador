@@ -970,7 +970,7 @@ fn tool_definitions() -> Value {
          "description": "Recent changes in the workspace (who changed which diagram, validation results).",
          "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "limit": {"type": "integer"}}}, "annotations": ro},
         {"name": "get_syntax_help", "title": "Mermaid syntax help",
-         "description": "Offline Mermaid cheat-sheet with a complete example. Topics: overview, flowchart, sequence, class, state, er, gantt, pie, mindmap.",
+         "description": "Offline Mermaid syntax with complete examples, for every Mermaid diagram type. Topics: overview (all types and their headers), layout, flowchart, sequence, class, state, er, usecase, requirement, c4, architecture, block, swimlane, zenuml, gantt, timeline, journey, kanban, gitgraph, mindmap, treeview, ishikawa, eventmodeling, agentflow, railroad, packet, pie, xychart, quadrant, radar, sankey, treemap, venn, wardley, cynefin — or any Mermaid header (\"quadrantChart\", \"xychart-beta\"). Add \" full\" for the official reference digest.",
          "inputSchema": {"type": "object", "properties": {"topic": {"type": "string"}}}, "annotations": ro},
         {"name": "show_diagram", "title": "Show diagram to the human",
          "description": "Open a diagram in the human's ODiagramador desktop viewer (launching the app if it is closed). Optionally highlight elements and show a note next to them, e.g. \"I added the payment step here\".",

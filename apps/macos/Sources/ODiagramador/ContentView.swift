@@ -408,8 +408,8 @@ struct NewDiagramSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(state.t("ui-new-diagram")).font(.headline)
             Picker(state.t("ui-new-diagram-type"), selection: $kind) {
-                ForEach(AppState.diagramKinds, id: \.self) { k in
-                    Text(state.t("ui-type-\(k)")).tag(k)
+                ForEach(state.diagramKinds, id: \.kind) { k in
+                    Text(k.label).tag(k.kind)
                 }
             }
             TextField(state.t("ui-new-diagram-name"), text: $name).onSubmit(create)

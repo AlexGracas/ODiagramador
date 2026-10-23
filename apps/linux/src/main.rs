@@ -1038,8 +1038,10 @@ fn new_diagram_dialog(ui: &Ui) {
     }
     let dialog = adw::MessageDialog::new(Some(&ui.window), Some(&s.t("ui-new-diagram")), None);
     let entry = gtk::Entry::builder().placeholder_text(s.t("ui-new-diagram-name")).activates_default(true).build();
-    let kinds = odg_core::construct::TEMPLATE_KINDS;
-    let labels: Vec<String> = kinds.iter().map(|k| s.t(&format!("ui-type-{k}"))).collect();
+    // every Mermaid diagram type, labelled in the current language
+    let kind_list = odg_core::kinds::list(s.lang);
+    let kinds: Vec<&str> = kind_list.iter().map(|k| k.kind).collect();
+    let labels: Vec<String> = kind_list.iter().map(|k| k.label.to_string()).collect();
     let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
     let kind_drop = gtk::DropDown::from_strings(&label_refs);
     let extra = gtk::Box::new(gtk::Orientation::Vertical, 8);

@@ -145,6 +145,12 @@ pub struct RawRender {
     pub model: DiagramModel,
     #[serde(default)]
     pub has_foreign_object: bool,
+    /// The PNG shows HTML labels as plain SVG text (WebKit cannot rasterize foreignObject).
+    #[serde(default)]
+    pub png_text_fallback: bool,
+    /// `%% @odg layout <mode>` asked for ELK on a diagram type ELK does not handle: Mermaid's layout was used.
+    #[serde(default)]
+    pub layout_fallback: Option<String>,
     #[serde(default)]
     pub duration_ms: u64,
 }

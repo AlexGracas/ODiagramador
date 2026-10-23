@@ -50,8 +50,8 @@ hint-W_WIDE = Use a direção de cima para baixo (`flowchart TB`) ou divida cade
 problem-W_TALL = O diagrama está muito alto ({ $width }×{ $height } px).
 hint-W_TALL = Use a direção da esquerda para a direita (`flowchart LR`) ou divida o diagrama.
 
-problem-W_FOREIGN_OBJECT = Este tipo de diagrama usa textos HTML; a prévia PNG pode ficar sem texto.
-hint-W_FOREIGN_OBJECT = Prefira a prévia SVG para este diagrama.
+problem-W_FOREIGN_OBJECT = Este tipo de diagrama usa textos HTML; na prévia PNG eles aparecem como texto simples.
+hint-W_FOREIGN_OBJECT = A prévia SVG e o visualizador do app mostram exatamente.
 
 problem-W_RASTER = Não foi possível gerar a prévia PNG: { $detail }
 hint-W_RASTER = Use a prévia SVG.
@@ -65,8 +65,8 @@ hint-W_LAYOUT_UNKNOWN_ID = Corrija o id ou remova a linha `%% @odg` (ids diferen
 problem-W_LAYOUT_IGNORED = As posições dos nós são ignoradas no modo de layout "{ $mode }".
 hint-W_LAYOUT_IGNORED = Adicione `%% @odg layout elk-interactive` (posições como dica) ou `%% @odg layout exact` (posições exatas).
 
-problem-W_LAYOUT_UNSUPPORTED = Comentários de layout não têm efeito em diagramas { $type }.
-hint-W_LAYOUT_UNSUPPORTED = Posições funcionam em fluxogramas e diagramas de estados, classes, ER e requisitos.
+problem-W_LAYOUT_UNSUPPORTED = Comentários de layout não têm efeito em diagramas { $type }: o ELK só organiza diagramas de grafo, então é usado o layout do próprio Mermaid.
+hint-W_LAYOUT_UNSUPPORTED = ELK, arrastar e posições exatas funcionam em fluxogramas e diagramas de estados, classes, ER e requisitos; remova as linhas `%% @odg` aqui.
 
 ## Resumos
 

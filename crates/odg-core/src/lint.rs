@@ -280,7 +280,7 @@ pub fn lint(src: &str, raw: &RawRender, lang: Lang, cfg: &LintConfig) -> Vec<Pro
         out.push(Draft::new(lang, Severity::Info, "W_TALL", &dims()));
     }
 
-    if raw.has_foreign_object {
+    if raw.has_foreign_object && (raw.png_text_fallback || raw.png.is_none()) {
         out.push(Draft::new(lang, Severity::Info, "W_FOREIGN_OBJECT", &[]));
     }
     if let Some(e) = &raw.raster_error {
