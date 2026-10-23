@@ -65,16 +65,19 @@ public sealed class RemoteMcp
                 _process = null;
                 Status = "failed";
                 Detail = lastLine.Replace("odg: ", "");
+                App.Log($"remote MCP exited (code {p.ExitCode}): {lastLine}");
                 Changed?.Invoke();
             };
             p.Start();
             p.BeginErrorReadLine();
+            App.Log($"remote MCP started: pid {p.Id} on {(_prefs.McpLan ? "0.0.0.0" : "127.0.0.1")}:{_prefs.McpPort}");
             _process = p;
             Status = "running";
             Detail = Url;
         }
         catch (Exception ex)
         {
+            App.Log("remote MCP failed to start: " + ex);
             Status = "failed";
             Detail = ex.Message;
         }

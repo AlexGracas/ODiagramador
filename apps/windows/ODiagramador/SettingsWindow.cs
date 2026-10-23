@@ -100,6 +100,18 @@ public sealed class SettingsWindow : Window
         line.Children.Add(check);
         line.Children.Add(version);
         panel.Children.Add(line);
+
+        // diagnostics: where the log is, one click to open it
+        panel.Children.Add(Header(T("ui-logs")));
+        var logs = new Button { Content = T("ui-open-logs"), Padding = new Thickness(12, 3, 12, 3), HorizontalAlignment = HorizontalAlignment.Left };
+        logs.Click += (_, _) =>
+        {
+            App.Log("open logs folder");
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{App.LogPath}\"") { UseShellExecute = true });
+        };
+        panel.Children.Add(logs);
+        var path = new TextBox { Text = App.LogPath, IsReadOnly = true, BorderThickness = new Thickness(0), Background = Brushes.Transparent, Margin = new Thickness(0, 6, 0, 0), FontSize = 12 };
+        panel.Children.Add(path);
         return panel;
     }
 

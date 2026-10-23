@@ -28,6 +28,10 @@ claude mcp add odiagramador -- /Applications/ODiagramador.app/Contents/MacOS/odg
 
 No Windows o caminho é `...\ODiagramador\odg.exe`. Guia completo: [docs/AGENTS.md](https://github.com/AlexGracas/ODiagramador/blob/main/docs/AGENTS.md).
 
+## Novidades da 0.2.1
+- **Copiar configuração do MCP**: agora sempre aparece uma janela com o resultado, o texto copiado e onde colar em cada programa (Claude Code, Codex, Cursor, Claude Desktop). Antes a confirmação ficava escondida atrás da janela de Configurações.
+- **Windows: log de diagnóstico** em `%LocalAppData%\ODiagramador\odiagramador.log` (Configurações → Geral → *Abrir pasta de logs*), registrando cliques nos menus, cópia para a área de transferência, MCP remoto, atualizações e erros.
+
 ## Novidades da 0.2.0
 - **Barra de ferramentas com ícones**: abrir pasta, novo diagrama, **Exportar** (PNG ou SVG) e **MCP** com o ícone de cada programa (Claude Code, Codex, Cursor, Claude Desktop).
 - **Configurações** (⌘, no macOS; engrenagem no Windows/Linux): idioma, aparência clara/escura/do sistema, fonte do editor, fonte do diagrama (vale também para os agentes).

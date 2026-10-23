@@ -53,6 +53,13 @@ public partial class MainWindow : Window
         _lang = Prefs.Language ?? _lang;
         Editor.TextArea.TextView.BackgroundRenderers.Add(_tint);
         McpIcon.Content = BrandIcons.Create("modelcontextprotocol") ?? BrandIcons.Glyph("\uE8F1");
+        App.Log($"main window: icons {(McpIcon.Content is TextBlock ? "missing (glyph fallback)" : "ok")}, base {AppContext.BaseDirectory}");
+        // trace clicks and menus: "the button does nothing" reports need to know how far a click got
+        foreach (var b in new[] { OpenButton, NewButton, ExportButton, McpButton, UpdateButton, SettingsButton })
+            b.PreviewMouseLeftButtonDown += (_, _) => App.Log($"mouse down on {b.Name}");
+        McpMenu.Opened += (_, _) => App.Log($"MCP menu opened ({McpMenu.Items.Count} items)");
+        McpMenu.Closed += (_, _) => App.Log("MCP menu closed");
+        if (ExportButton.ContextMenu is { } exportMenu) exportMenu.Opened += (_, _) => App.Log("export menu opened");
         _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); Toast.Visibility = Visibility.Collapsed; };
         SystemEvents.UserPreferenceChanged += OnSystemPreferenceChanged;
         Closed += (_, _) => SystemEvents.UserPreferenceChanged -= OnSystemPreferenceChanged;
@@ -104,9 +111,11 @@ public partial class MainWindow : Window
     private async Task InitAsync()
     {
         var kit = Path.Combine(AppContext.BaseDirectory, "render-kit");
+        App.Log($"init: render-kit {(Directory.Exists(kit) ? "found" : "MISSING")}, odg.exe {(File.Exists(Path.Combine(AppContext.BaseDirectory, "odg.exe")) ? "found" : "MISSING")}, prefs lang={Prefs.Language} appearance={Prefs.Appearance} dark={Prefs.IsDark}");
         var env = await CoreWebView2Environment.CreateAsync(null,
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ODiagramador", "WebView2"));
         await Viewer.EnsureCoreWebView2Async(env);
+        App.Log($"init: WebView2 {env.BrowserVersionString}");
         Viewer.CoreWebView2.SetVirtualHostNameToFolderMapping("odg.localhost", kit, CoreWebView2HostResourceAccessKind.Allow);
         Viewer.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
         Viewer.CoreWebView2.WebMessageReceived += (_, e) => OnViewerMessage(e.TryGetWebMessageAsString());
@@ -144,15 +153,27 @@ public partial class MainWindow : Window
         foreach (var (id, name) in McpClients)
         {
             var item = new MenuItem { Header = name, Icon = BrandIcons.ForClient(id), Tag = id };
-            item.Click += (_, _) => CopyMcp(id, remote: false);
+            item.Click += (_, _) =>
+            {
+                App.Log($"MCP menu item clicked: {id}");
+                CopyMcp(id, remote: false);
+            };
             McpMenu.Items.Add(item);
         }
         var other = new MenuItem { Header = T("ui-mcp-other"), Icon = BrandIcons.ForClient("json") };
-        other.Click += (_, _) => CopyMcp("json", remote: false);
+        other.Click += (_, _) =>
+        {
+            App.Log("MCP menu item clicked: json");
+            CopyMcp("json", remote: false);
+        };
         McpMenu.Items.Add(other);
         McpMenu.Items.Add(new Separator());
         var settings = new MenuItem { Header = T("ui-mcp-settings"), Icon = BrandIcons.Glyph("\uE713") };
-        settings.Click += (_, _) => OpenSettings("mcp");
+        settings.Click += (_, _) =>
+        {
+            App.Log("MCP menu item clicked: settings");
+            OpenSettings("mcp");
+        };
         McpMenu.Items.Add(settings);
     }
 
@@ -219,6 +240,8 @@ public partial class MainWindow : Window
             try
             {
                 Clipboard.SetDataObject(text, true);
+                var back = Clipboard.ContainsText() ? Clipboard.GetText() : null;
+                App.Log($"clipboard set on attempt {i + 1}: {text.Length} chars, read back {(back == text ? "matches" : back is null ? "NO TEXT" : $"DIFFERENT ({back.Length} chars)")}");
                 return true;
             }
             catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or InvalidOperationException)
@@ -245,6 +268,7 @@ public partial class MainWindow : Window
 
     internal void OpenSettings(string tab)
     {
+        App.Log($"open settings: {tab}");
         if (_settings is { IsLoaded: true })
         {
             _settings.SelectTab(tab);
@@ -260,6 +284,7 @@ public partial class MainWindow : Window
         try
         {
             var info = await Updates.CheckAsync();
+            App.Log($"update check: current {info?.Current} latest {info?.Latest} available={info?.Available} asset={info?.AssetName}");
             Prefs.LastUpdateCheck = DateTime.UtcNow;
             Prefs.Save();
             UpdateButton.Visibility = Updates.Available is null ? Visibility.Collapsed : Visibility.Visible;
@@ -276,6 +301,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            App.Log("update check failed: " + ex);
             if (userInitiated) MessageBox.Show(this, T("ui-update-failed", new { detail = ex.Message }), "ODiagramador");
         }
     }
@@ -309,6 +335,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            App.Log("update install failed: " + ex);
             MessageBox.Show(this, T("ui-update-failed", new { detail = ex.Message }), "ODiagramador");
         }
     }
@@ -456,6 +483,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            App.Log("error: " + ex);
             StatusText.Text = ex.Message;
         }
     }
@@ -491,6 +519,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            App.Log("error: " + ex);
             StatusText.Text = ex.Message;
             return;
         }
@@ -521,6 +550,7 @@ public partial class MainWindow : Window
     private void OpenWorkspace(string dir)
     {
         _workspace = Path.GetFullPath(dir);
+        App.Log($"open workspace: {_workspace}");
         Prefs.LastWorkspace = _workspace;
         Prefs.Save();
         var cfg = Core.CallOrDefault<WorkspaceConfig>("config", new { workspace = _workspace });
@@ -616,6 +646,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            App.Log("error: " + ex);
             StatusText.Text = ex.Message;
         }
     }
@@ -724,6 +755,7 @@ public partial class MainWindow : Window
 
     private void Export(bool png)
     {
+        App.Log($"export {(png ? "png" : "svg")}: selected={_selected ?? "(none)"} png={_lastPng is not null} svg={_lastSvg is not null}");
         if (_selected is null) return;
         byte[]? data = png
             ? (_lastPng is null ? null : Convert.FromBase64String(_lastPng))
@@ -734,7 +766,9 @@ public partial class MainWindow : Window
             FileName = Path.GetFileNameWithoutExtension(_selected) + (png ? ".png" : ".svg"),
             Filter = png ? "PNG|*.png" : "SVG|*.svg",
         };
-        if (dialog.ShowDialog(this) == true) File.WriteAllBytes(dialog.FileName, data);
+        if (dialog.ShowDialog(this) != true) return;
+        File.WriteAllBytes(dialog.FileName, data);
+        App.Log($"exported {data.Length} bytes to {dialog.FileName}");
     }
 
     /// <summary>Tints lines that have errors / warnings in the editor.</summary>

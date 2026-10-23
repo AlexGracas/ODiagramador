@@ -283,3 +283,5 @@ ui-mcp-howto-codex = Paste it into Codex's configuration file: ~/.codex/config.t
 ui-mcp-howto-cursor = In Cursor: Settings → MCP → Add new MCP server, or paste into ~/.cursor/mcp.json (on Windows: %USERPROFILE%\.cursor\mcp.json). If the file already has "mcpServers", merge only the "odiagramador" block.
 ui-mcp-howto-claude-desktop = In Claude Desktop: Settings → Developer → Edit Config. Paste into claude_desktop_config.json (on Windows: %APPDATA%\Claude\claude_desktop_config.json); if it already has "mcpServers", merge only the "odiagramador" block. Then restart Claude Desktop.
 ui-mcp-howto-json = Paste it into your client's MCP configuration ("mcpServers" format).
+ui-logs = Diagnostics
+ui-open-logs = Open logs folder

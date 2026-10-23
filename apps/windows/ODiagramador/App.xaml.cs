@@ -14,6 +14,8 @@ public partial class App : Application
     {
         Args = e.Args;
         Log($"start {Updater.CurrentVersion} on {Environment.OSVersion}");
+        AppDomain.CurrentDomain.UnhandledException += (_, ex) => Log("fatal: " + ex.ExceptionObject);
+        TaskScheduler.UnobservedTaskException += (_, ex) => Log("background task: " + ex.Exception);
         DispatcherUnhandledException += (_, ex) =>
         {
             Log("unhandled: " + ex.Exception);
