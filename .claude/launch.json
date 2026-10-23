@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "render-kit",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4455", "--directory", "render-kit"],
+      "port": 4455
+    }
+  ]
+}

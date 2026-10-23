@@ -1,0 +1,111 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #59636e;
+  --panel: rgba(246, 248, 250, 0.92);
+  --border: #d1d9e0;
+  --error: #d1242f;
+  --warning: #bf8700;
+  --info: #0969da;
+  --select: #8250df;
+}
+:root[data-theme="dark"] {
+  --bg: #0d1117;
+  --fg: #e6edf3;
+  --muted: #9198a1;
+  --panel: rgba(22, 27, 34, 0.92);
+  --border: #3d444d;
+  --error: #f85149;
+  --warning: #d29922;
+  --info: #4493f8;
+  --select: #ab7df8;
+}
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px -apple-system, "Segoe UI", system-ui, "Cantarell", sans-serif;
+  overflow: hidden;
+}
+#viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  cursor: grab;
+}
+#viewport.dragging { cursor: grabbing; }
+#stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+#stage svg { display: block; }
+#measure {
+  position: absolute;
+  left: -100000px;
+  top: 0;
+  visibility: hidden;
+}
+#banner {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--error);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--fg);
+  white-space: pre-wrap;
+  font: 12px ui-monospace, "SF Mono", Consolas, "DejaVu Sans Mono", monospace;
+  max-height: 40%;
+  overflow: auto;
+}
+#empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+#empty[hidden], #banner[hidden], #toolbar[hidden] { display: none; }
+#toolbar {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+#toolbar button {
+  min-width: 28px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+#zoom-label { min-width: 44px; text-align: center; color: var(--muted); }
+.odg-marker { cursor: pointer; }
+.odg-marker rect { fill: none; stroke-width: 2.5; stroke-dasharray: 6 3; }
+.odg-marker.error rect { stroke: var(--error); }
+.odg-marker.warning rect { stroke: var(--warning); }
+.odg-marker.info rect { stroke: var(--info); }
+.odg-marker circle { stroke: none; }
+.odg-marker.error circle { fill: var(--error); }
+.odg-marker.warning circle { fill: var(--warning); }
+.odg-marker.info circle { fill: var(--info); }
+.odg-marker text { fill: #fff; font: bold 11px Arial, sans-serif; }
+.odg-selected > * { outline: none; }
+.odg-selected rect, .odg-selected polygon, .odg-selected circle, .odg-selected path, .odg-selected ellipse {
+  stroke: var(--select) !important;
+  stroke-width: 3px !important;
+}

@@ -1,0 +1,6 @@
+flowchart LR
+    api[API Gateway] --> auth[Auth service]
+    auth --> users[(Users DB)]
+    api --> orders[Orders service]
+    orders --> users2[(Users DB)]
+    legacy[Legacy reporting job that nobody remembers who owns but still runs every night]

@@ -1,0 +1,4 @@
+module COdg [system] {
+    header "odg_ffi.h"
+    export *
+}

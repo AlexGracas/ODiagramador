@@ -1,0 +1,21 @@
+[package]
+name = "odg-core"
+description = "ODiagramador core: workspace, diagram model, lint, reports, i18n"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+base64.workspace = true
+thiserror.workspace = true
+fluent-bundle.workspace = true
+fluent-syntax.workspace = true
+unic-langid.workspace = true
+regex.workspace = true
+sha2.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

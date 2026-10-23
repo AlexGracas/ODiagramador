@@ -1,0 +1,17 @@
+classDiagram
+    direction LR
+    class Order {
+        +String id
+        +Date createdAt
+        +total() Money
+    }
+    class OrderItem {
+        +int quantity
+        +Money price
+    }
+    class Customer {
+        +String name
+        +String email
+    }
+    Customer "1" --> "*" Order : places
+    Order "1" *-- "1..*" OrderItem : contains

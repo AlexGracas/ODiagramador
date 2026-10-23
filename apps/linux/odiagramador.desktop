@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=ODiagramador
+Comment=AI-friendly Mermaid diagram viewer
+Comment[pt_BR]=Visualizador de diagramas Mermaid amigável para IA
+Exec=odiagramador %u
+Icon=applications-graphics
+Terminal=false
+Categories=Development;Graphics;
+MimeType=x-scheme-handler/odiagramador;text/vnd.mermaid;
+StartupNotify=true

@@ -1,0 +1,17 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant W as Web app
+    participant A as API
+    participant P as Payments
+    U->>W: Click "Pay"
+    W->>A: POST /checkout
+    A->>P: charge(amount)
+    alt approved
+        P-->>A: ok
+        A-->>W: 201 Created
+    else refused
+        P-->>A: refused
+        A-->>W: 402 Payment Required
+    end
+    W-->>U: Show result

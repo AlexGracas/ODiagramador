@@ -1,0 +1,640 @@
+/*
+ * ODiagramador bridge — shared by every host (headless wry, WKWebView, WebView2, WebKitGTK).
+ *
+ * Host -> page:  odg.handle({ op, id, ... })            (via evaluateJavaScript / ExecuteScript)
+ * Page -> host:  JSON string posted on the host channel  (see post())
+ *
+ * Ops:
+ *   process   { id, source, theme?, png?, scale?, background? }  -> { op:"result", id, result: RawRender }
+ *   rasterize { id, svg, scale?, background? }                    -> { op:"png", id, png }
+ *   show      { problems: [...] }            (viewer) draws problem markers over the last diagram
+ *   highlight { element_id }                 (viewer) selects/centers an element
+ *   theme     { theme: "light" | "dark" }    (viewer) page chrome theme
+ *   strings   { strings: { key: text } }     (viewer) localized UI strings
+ *   fit / zoom { factor }                    (viewer)
+ *
+ * Page events (viewer): ready, select { element_id }, select-problem { index }
+ */
+(function () {
+  "use strict";
+
+  var FONT = 'Arial, "Liberation Sans", Helvetica, sans-serif';
+  var MAX_CANVAS_PIXELS = 16000000; // WebKit canvas limit is ~16.7M px
+  var params = new URLSearchParams(location.search);
+  var mode = params.get("mode") || "headless";
+  var counter = 0;
+  var configuredTheme = null;
+  var queue = Promise.resolve();
+  var strings = { fit: "Fit", empty: "No diagram" };
+  var view = { scale: 1, x: 0, y: 0, svg: null, width: 0, height: 0, fitted: false };
+
+  // ---------------------------------------------------------------- transport
+  function post(msg) {
+    var s = JSON.stringify(msg);
+    try {
+      if (window.ipc && typeof window.ipc.postMessage === "function") return window.ipc.postMessage(s); // wry
+      if (window.chrome && window.chrome.webview) return window.chrome.webview.postMessage(s); // WebView2
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.odg) {
+        return window.webkit.messageHandlers.odg.postMessage(s); // WKWebView / WebKitGTK
+      }
+    } catch (e) {
+      console.error("[odg] post failed", e);
+    }
+    console.log("[odg]", s);
+  }
+
+  // ---------------------------------------------------------------- mermaid setup
+  function configure(theme) {
+    var key = theme || "default";
+    if (configuredTheme === key) return;
+    var noMax = { useMaxWidth: false };
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      theme: key,
+      fontFamily: FONT,
+      htmlLabels: false,
+      flowchart: { htmlLabels: false, useMaxWidth: false },
+      class: { htmlLabels: false, useMaxWidth: false },
+      state: noMax, sequence: noMax, er: noMax, gantt: noMax, journey: noMax, pie: noMax,
+      mindmap: noMax, timeline: noMax, requirement: noMax, gitGraph: noMax, quadrantChart: noMax,
+      xyChart: noMax, block: noMax, sankey: noMax, packet: noMax, architecture: noMax, c4: noMax,
+      kanban: noMax, radar: noMax, treemap: noMax
+    });
+    configuredTheme = key;
+  }
+
+  // ---------------------------------------------------------------- errors
+  function normalizeError(e, kindHint) {
+    var msg = String((e && (e.message || e.str)) || e);
+    var line = null, column = null, token = null, expected = null;
+    var h = e && e.hash;
+    if (h) {
+      if (h.loc) {
+        // jison's loc spans the previous token up to the offending one: its end is the culprit
+        line = h.loc.first_line;
+        if (h.loc.last_line === h.loc.first_line) column = h.loc.last_column + 1;
+      } else if (typeof h.line === "number") {
+        line = h.line + 1;
+      }
+      token = h.text && String(h.text).trim() ? h.text : h.token;
+      expected = h.expected;
+    }
+    var r = e && e.result;
+    if (line == null && r) {
+      var le = r.lexerErrors && r.lexerErrors[0];
+      var pe = r.parserErrors && r.parserErrors[0];
+      if (le) {
+        line = le.line;
+        column = le.column;
+      } else if (pe && pe.token) {
+        line = pe.token.startLine;
+        column = pe.token.startColumn;
+      }
+    }
+    if (line == null) {
+      var m = msg.match(/line (\d+)/i);
+      if (m) line = +m[1];
+      var c = msg.match(/column (\d+)/i);
+      if (c) column = +c[1];
+    }
+    var kind = kindHint || "parse";
+    if (/No diagram type detected/i.test(msg) || (e && e.name === "UnknownDiagramError")) kind = "unknown_type";
+    return {
+      kind: kind,
+      message: msg.slice(0, 2000),
+      line: line,
+      column: column,
+      token: token == null ? null : String(token),
+      expected: Array.isArray(expected) ? expected.slice(0, 12).map(String) : null
+    };
+  }
+
+  // ---------------------------------------------------------------- model
+  function plain(label) {
+    if (label == null) return "";
+    var s = String(label);
+    s = s.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "");
+    s = s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/&quot;/g, '"');
+    s = s.replace(/^"(.*)"$/, "$1").replace(/^`(.*)`$/, "$1");
+    return s.trim();
+  }
+
+  function extractModel(diag) {
+    var model = { nodes: [], edges: [], groups: [] };
+    var db = diag && diag.db;
+    if (!db) return model;
+    if (typeof db.getData === "function") {
+      var d = db.getData();
+      (d.nodes || []).forEach(function (n) {
+        var id = String(n.id);
+        var label = plain(n.label != null ? n.label : n.id);
+        var domKey = n.domId ? stripCounter(String(n.domId)) : null;
+        var er = !n.domId && id.match(/^entity-(.+)-\d+$/); // erDiagram: id is the dom id
+        if (er) {
+          domKey = stripCounter(id);
+          id = er[1];
+        }
+        var item = { id: id, label: label, parent: n.parentId || null, shape: n.shape || null, dom_key: domKey };
+        if (n.isGroup) model.groups.push(item); else model.nodes.push(item);
+      });
+      (d.edges || []).forEach(function (e) {
+        model.edges.push({ id: String(e.id), from: String(e.start), to: String(e.end), label: plain(e.label) });
+      });
+      return model;
+    }
+    if (typeof db.getActors === "function") { // sequence
+      var actors = db.getActors();
+      var it = actors instanceof Map ? actors.values() : Object.values(actors);
+      Array.from(it).forEach(function (a) {
+        model.nodes.push({ id: String(a.name), label: plain(a.description || a.name), parent: null, shape: a.type || "participant" });
+      });
+      var msgs = typeof db.getMessages === "function" ? db.getMessages() : [];
+      msgs.forEach(function (m, i) {
+        if (m.from && m.to) model.edges.push({ id: "msg" + i, from: String(m.from), to: String(m.to), label: plain(m.message) });
+      });
+    }
+    return model;
+  }
+
+  // ---------------------------------------------------------------- geometry
+  function viewBoxOf(svg) {
+    var vb = svg.viewBox && svg.viewBox.baseVal;
+    if (vb && vb.width > 0) return { x: vb.x, y: vb.y, w: vb.width, h: vb.height };
+    var b = svg.getBBox();
+    return { x: b.x, y: b.y, w: b.width, h: b.height };
+  }
+
+  // bbox of el in the svg's user (viewBox) coordinates
+  function userBox(el, svg, vb) {
+    var b;
+    try { b = el.getBBox(); } catch (e) { return null; }
+    var m = el.getCTM();
+    var root = svg.getCTM();
+    if (!m) return { x: b.x, y: b.y, w: b.width, h: b.height };
+    // CTM maps to the svg viewport; undo the viewBox->viewport transform of the root
+    var toUser = root ? root.inverse().multiply(m) : m;
+    var pts = [[b.x, b.y], [b.x + b.width, b.y], [b.x, b.y + b.height], [b.x + b.width, b.y + b.height]];
+    var xs = [], ys = [];
+    pts.forEach(function (p) {
+      var pt = svg.createSVGPoint();
+      pt.x = p[0];
+      pt.y = p[1];
+      var t = pt.matrixTransform(toUser);
+      xs.push(t.x);
+      ys.push(t.y);
+    });
+    var x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
+    return round({ x: x0, y: y0, w: Math.max.apply(null, xs) - x0, h: Math.max.apply(null, ys) - y0 });
+  }
+
+  function round(b) {
+    return { x: Math.round(b.x * 10) / 10, y: Math.round(b.y * 10) / 10, w: Math.round(b.w * 10) / 10, h: Math.round(b.h * 10) / 10 };
+  }
+
+  function shapeOf(g) {
+    for (var i = 0; i < g.children.length; i++) {
+      var c = g.children[i];
+      if (c.classList && c.classList.contains("label")) continue;
+      if (/^(rect|polygon|circle|ellipse|path|g)$/.test(c.tagName)) return c;
+    }
+    return null;
+  }
+
+  function labelOf(g) {
+    return g.querySelector(":scope > .label, :scope > g.label, :scope > text") || g.querySelector(".label, text");
+  }
+
+  function stripCounter(domId) {
+    return domId.replace(/-\d+$/, "");
+  }
+
+  function measureGeometry(svg, model, type) {
+    var checkOverflow = /^(flowchart|state|graph)/.test(type || "");
+    var vb = viewBoxOf(svg);
+    var byId = {};
+    // unified renderer nodes carry "<svgId>-<type>-<id>-<n>" ids without data-id: tag them
+    var prefix = svg.id ? svg.id + "-" : "";
+    var byKey = {};
+    var gnodes = svg.querySelectorAll("g.node, g.cluster");
+    for (var k = 0; k < gnodes.length; k++) {
+      var gid = gnodes[k].id || "";
+      if (prefix && gid.indexOf(prefix) === 0) gid = gid.slice(prefix.length);
+      byKey[stripCounter(gid)] = gnodes[k];
+      byKey[gid] = byKey[gid] || gnodes[k];
+    }
+    model.nodes.concat(model.groups).forEach(function (n) {
+      var el = (n.dom_key && byKey[n.dom_key]) || byKey[n.id];
+      if (el && !el.getAttribute("data-id")) el.setAttribute("data-id", n.id);
+      delete n.dom_key;
+    });
+    var els = svg.querySelectorAll("[data-id]");
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      var id = el.getAttribute("data-id");
+      var et = el.getAttribute("data-et");
+      if (et === "life-line" || et === "edge") continue;
+      if (el.closest(".edgeLabel")) continue;
+      if (!byId[id]) byId[id] = el; // sequence: first is the top actor box
+    }
+    function enrich(item, isGroup) {
+      var el = byId[item.id];
+      if (!el) return;
+      item.dom_id = el.id || null;
+      item.bbox = userBox(el, svg, vb);
+      if (isGroup || !checkOverflow) return;
+      var shape = shapeOf(el), label = labelOf(el);
+      if (shape && label) {
+        var sb = userBox(shape, svg, vb), lb = userBox(label, svg, vb);
+        if (sb && lb) {
+          item.label_bbox = lb;
+          item.label_overflow = lb.w > sb.w + 2 || lb.h > sb.h + 2;
+        }
+      }
+    }
+    model.nodes.forEach(function (n) { enrich(n, false); });
+    model.groups.forEach(function (g) { enrich(g, true); });
+    // nodes the model did not know about (diagram types without getData)
+    if (model.nodes.length === 0) {
+      Object.keys(byId).forEach(function (id) {
+        var el = byId[id];
+        var cls = el.getAttribute("class") || "";
+        if (!/\bnode\b/.test(cls) && el.getAttribute("data-et") !== "participant") return;
+        var item = { id: id, label: plain(el.textContent), parent: null, shape: null };
+        enrich(item, false);
+        model.nodes.push(item);
+      });
+    }
+    var edgeEls = svg.querySelectorAll('[data-et="edge"]');
+    var edgeById = {};
+    for (var j = 0; j < edgeEls.length; j++) edgeById[edgeEls[j].getAttribute("data-id")] = edgeEls[j];
+    model.edges.forEach(function (e) {
+      var el = edgeById[e.id];
+      if (el) e.bbox = userBox(el, svg, vb);
+    });
+    return vb;
+  }
+
+  // ---------------------------------------------------------------- svg helpers
+  function fixSize(svg) {
+    var vb = viewBoxOf(svg);
+    svg.setAttribute("width", String(Math.ceil(vb.w)));
+    svg.setAttribute("height", String(Math.ceil(vb.h)));
+    svg.style.maxWidth = "";
+    svg.removeAttribute("style");
+    return vb;
+  }
+
+  function serialize(svg) {
+    var s = new XMLSerializer().serializeToString(svg);
+    if (s.indexOf('xmlns="http://www.w3.org/2000/svg"') < 0) s = s.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"');
+    return s;
+  }
+
+  function rasterize(svgText, scale, background) {
+    return new Promise(function (resolve, reject) {
+      var doc = new DOMParser().parseFromString(svgText, "image/svg+xml");
+      var root = doc.documentElement;
+      var w = parseFloat(root.getAttribute("width")) || 800;
+      var h = parseFloat(root.getAttribute("height")) || 600;
+      var s = scale || 2;
+      if (w * h * s * s > MAX_CANVAS_PIXELS) s = Math.sqrt(MAX_CANVAS_PIXELS / (w * h));
+      var blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(w * s));
+          canvas.height = Math.max(1, Math.round(h * s));
+          var ctx = canvas.getContext("2d");
+          if (background && background !== "transparent") {
+            ctx.fillStyle = background;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+          }
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(url);
+          resolve({ png: canvas.toDataURL("image/png").split(",")[1], width: canvas.width, height: canvas.height });
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          reject(e);
+        }
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        reject(new Error("svg image failed to load (unsupported content such as foreignObject?)"));
+      };
+      img.src = url;
+    });
+  }
+
+  // ---------------------------------------------------------------- process
+  async function processDiagram(req) {
+    var t0 = performance.now();
+    var source = req.source == null ? "" : String(req.source);
+    var out = {
+      ok: false, diagram_type: null, parse_error: null, render_error: null, raster_error: null,
+      svg: null, png: null, png_width: 0, png_height: 0, width: 0, height: 0,
+      view_box: null, model: { nodes: [], edges: [], groups: [] }, has_foreign_object: false,
+      mermaid_version: (window.mermaid && mermaid.version) || null, duration_ms: 0
+    };
+    configure(req.theme);
+    try {
+      await mermaid.parse(source);
+    } catch (e) {
+      out.parse_error = normalizeError(e, "parse");
+      out.duration_ms = Math.round(performance.now() - t0);
+      return out;
+    }
+    try {
+      var diag = await mermaid.mermaidAPI.getDiagramFromText(source);
+      out.diagram_type = diag.type;
+      out.model = extractModel(diag);
+    } catch (e) {
+      out.model_error = String((e && e.message) || e);
+    }
+    var host = mode === "viewer" ? document.getElementById("measure") : document.getElementById("measure");
+    var id = "odg" + (++counter);
+    var svgText;
+    try {
+      var res = await mermaid.render(id, source);
+      svgText = res.svg;
+    } catch (e) {
+      out.render_error = normalizeError(e, "render");
+      cleanupTemp(id);
+      out.duration_ms = Math.round(performance.now() - t0);
+      return out;
+    }
+    cleanupTemp(id);
+    host.innerHTML = svgText;
+    var svg = host.querySelector("svg");
+    var vb = fixSize(svg);
+    try {
+      measureGeometry(svg, out.model, out.diagram_type);
+    } catch (e) {
+      out.model_error = String((e && e.message) || e);
+    }
+    out.view_box = round(vb);
+    out.width = Math.ceil(vb.w);
+    out.height = Math.ceil(vb.h);
+    out.has_foreign_object = !!svg.querySelector("foreignObject");
+    out.svg = serialize(svg);
+    out.ok = true;
+    if (req.png) {
+      try {
+        var bg = req.background || (req.theme === "dark" ? "#0d1117" : "#ffffff");
+        var r = await rasterize(out.svg, req.scale || 2, bg);
+        out.png = r.png;
+        out.png_width = r.width;
+        out.png_height = r.height;
+      } catch (e) {
+        out.raster_error = String((e && e.message) || e);
+      }
+    }
+    if (mode === "viewer") showSvg(svg);
+    else host.innerHTML = "";
+    out.duration_ms = Math.round(performance.now() - t0);
+    return out;
+  }
+
+  function cleanupTemp(id) {
+    ["d" + id, id, "i" + id].forEach(function (x) {
+      var el = document.getElementById(x);
+      if (el && el.parentNode && el.closest("#stage") == null && el.closest("#measure") == null) el.parentNode.removeChild(el);
+    });
+  }
+
+  // ---------------------------------------------------------------- viewer
+  var viewport = document.getElementById("viewport");
+  var stage = document.getElementById("stage");
+
+  function applyTransform() {
+    stage.style.transform = "translate(" + view.x + "px," + view.y + "px) scale(" + view.scale + ")";
+    var label = document.getElementById("zoom-label");
+    if (label) label.textContent = Math.round(view.scale * 100) + "%";
+  }
+
+  function fit() {
+    if (!view.svg) return;
+    var pad = 24;
+    var vw = viewport.clientWidth - pad * 2, vh = viewport.clientHeight - pad * 2;
+    var s = Math.min(vw / view.width, vh / view.height, 2);
+    if (!isFinite(s) || s <= 0) s = 1;
+    view.scale = s;
+    view.x = (viewport.clientWidth - view.width * s) / 2;
+    view.y = (viewport.clientHeight - view.height * s) / 2;
+    applyTransform();
+  }
+
+  function zoom(factor, cx, cy) {
+    var nx = cx == null ? viewport.clientWidth / 2 : cx;
+    var ny = cy == null ? viewport.clientHeight / 2 : cy;
+    var ns = Math.min(8, Math.max(0.05, view.scale * factor));
+    view.x = nx - (nx - view.x) * (ns / view.scale);
+    view.y = ny - (ny - view.y) * (ns / view.scale);
+    view.scale = ns;
+    applyTransform();
+  }
+
+  function showSvg(svg) {
+    document.getElementById("banner").hidden = true;
+    document.getElementById("empty").hidden = true;
+    document.getElementById("toolbar").hidden = false;
+    stage.innerHTML = "";
+    stage.appendChild(svg);
+    var firstTime = !view.svg;
+    var pw = view.width, ph = view.height;
+    view.svg = svg;
+    view.width = parseFloat(svg.getAttribute("width")) || 1;
+    view.height = parseFloat(svg.getAttribute("height")) || 1;
+    // keep the user's zoom while editing, but re-frame when the drawing changes size a lot
+    var resized = Math.abs(view.width - pw) / Math.max(pw, 1) > 0.25 || Math.abs(view.height - ph) / Math.max(ph, 1) > 0.25;
+    if (firstTime || !view.fitted || resized) {
+      fit();
+      view.fitted = true;
+    } else {
+      applyTransform();
+    }
+  }
+
+  function showError(err) {
+    var banner = document.getElementById("banner");
+    var where = err.line ? " (line " + err.line + (err.column ? ":" + err.column : "") + ")" : "";
+    banner.textContent = err.message + where;
+    banner.hidden = false;
+    document.getElementById("empty").hidden = true;
+  }
+
+  function showEmpty() {
+    stage.innerHTML = "";
+    view.svg = null;
+    document.getElementById("toolbar").hidden = true;
+    document.getElementById("banner").hidden = true;
+    var empty = document.getElementById("empty");
+    empty.textContent = strings.empty;
+    empty.hidden = false;
+  }
+
+  function drawMarkers(problems) {
+    if (!view.svg) return;
+    var NS = "http://www.w3.org/2000/svg";
+    var old = view.svg.querySelector("#odg-overlay");
+    if (old) old.parentNode.removeChild(old);
+    var layer = document.createElementNS(NS, "g");
+    layer.setAttribute("id", "odg-overlay");
+    var slots = {}; // problems on the same area get side-by-side badges
+    (problems || []).forEach(function (p) {
+      if (!p.bbox) return;
+      var key = [p.bbox.x, p.bbox.y, p.bbox.w, p.bbox.h].join(",");
+      var slot = slots[key] || 0;
+      slots[key] = slot + 1;
+      var g = document.createElementNS(NS, "g");
+      g.setAttribute("class", "odg-marker " + (p.severity || "warning"));
+      g.setAttribute("data-problem", String(p.index));
+      var pad = 4;
+      var r = document.createElementNS(NS, "rect");
+      r.setAttribute("x", p.bbox.x - pad);
+      r.setAttribute("y", p.bbox.y - pad);
+      r.setAttribute("width", p.bbox.w + pad * 2);
+      r.setAttribute("height", p.bbox.h + pad * 2);
+      r.setAttribute("rx", 4);
+      if (slot > 0) r.setAttribute("visibility", "hidden");
+      var bx = p.bbox.x - pad + 22 * slot;
+      var c = document.createElementNS(NS, "circle");
+      c.setAttribute("cx", bx);
+      c.setAttribute("cy", p.bbox.y - pad);
+      c.setAttribute("r", 9);
+      var t = document.createElementNS(NS, "text");
+      t.setAttribute("x", bx);
+      t.setAttribute("y", p.bbox.y - pad + 4);
+      t.setAttribute("text-anchor", "middle");
+      t.textContent = String(p.index);
+      var title = document.createElementNS(NS, "title");
+      title.textContent = (p.code ? p.code + ": " : "") + (p.message || "");
+      g.appendChild(title);
+      g.appendChild(r);
+      g.appendChild(c);
+      g.appendChild(t);
+      layer.appendChild(g);
+    });
+    view.svg.appendChild(layer);
+  }
+
+  function highlight(elementId) {
+    if (!view.svg) return;
+    var prev = view.svg.querySelectorAll(".odg-selected");
+    for (var i = 0; i < prev.length; i++) prev[i].classList.remove("odg-selected");
+    if (!elementId) return;
+    var el = view.svg.querySelector('[data-id="' + CSS.escape(elementId) + '"]');
+    if (!el) return;
+    el.classList.add("odg-selected");
+    var b = el.getBoundingClientRect();
+    var vr = viewport.getBoundingClientRect();
+    if (b.right < vr.left || b.left > vr.right || b.bottom < vr.top || b.top > vr.bottom) {
+      view.x += vr.left + vr.width / 2 - (b.left + b.width / 2);
+      view.y += vr.top + vr.height / 2 - (b.top + b.height / 2);
+      applyTransform();
+    }
+  }
+
+  function setupViewer() {
+    var drag = null;
+    viewport.addEventListener("mousedown", function (e) {
+      if (e.button !== 0) return;
+      drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false };
+      viewport.classList.add("dragging");
+    });
+    window.addEventListener("mousemove", function (e) {
+      if (!drag) return;
+      var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+      view.x = drag.vx + dx;
+      view.y = drag.vy + dy;
+      applyTransform();
+    });
+    window.addEventListener("mouseup", function (e) {
+      if (!drag) return;
+      var moved = drag.moved;
+      drag = null;
+      viewport.classList.remove("dragging");
+      if (moved) return;
+      var marker = e.target.closest && e.target.closest(".odg-marker");
+      if (marker) return post({ op: "select-problem", index: +marker.getAttribute("data-problem") });
+      var node = e.target.closest && e.target.closest("[data-id]");
+      if (node && node.getAttribute("data-et") !== "edge") {
+        highlight(node.getAttribute("data-id"));
+        post({ op: "select", element_id: node.getAttribute("data-id") });
+      }
+    });
+    viewport.addEventListener("wheel", function (e) {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        var r = viewport.getBoundingClientRect();
+        zoom(Math.exp(-e.deltaY * 0.01), e.clientX - r.left, e.clientY - r.top);
+      } else {
+        view.x -= e.deltaX;
+        view.y -= e.deltaY;
+        applyTransform();
+      }
+    }, { passive: false });
+    document.getElementById("toolbar").addEventListener("click", function (e) {
+      var act = e.target.getAttribute("data-act");
+      if (act === "zoom-in") zoom(1.25);
+      else if (act === "zoom-out") zoom(0.8);
+      else if (act === "fit") fit();
+    });
+    window.addEventListener("resize", function () { if (view.svg && view.fitted) fit(); });
+    showEmpty();
+  }
+
+  // ---------------------------------------------------------------- dispatch
+  function handle(msg) {
+    if (typeof msg === "string") msg = JSON.parse(msg);
+    var op = msg.op;
+    if (op === "process") {
+      queue = queue.then(function () {
+        return processDiagram(msg).then(function (result) {
+          if (mode === "viewer") {
+            if (!String(msg.source || "").trim()) showEmpty();
+            else if (result.parse_error) showError(result.parse_error);
+            else if (result.render_error) showError(result.render_error);
+          }
+          post({ op: "result", id: msg.id, result: result });
+        }, function (e) {
+          post({ op: "result", id: msg.id, result: { ok: false, render_error: normalizeError(e, "render") } });
+        });
+      });
+      return;
+    }
+    if (op === "rasterize") {
+      queue = queue.then(function () {
+        return rasterize(msg.svg, msg.scale, msg.background).then(function (r) {
+          post({ op: "png", id: msg.id, png: r.png, width: r.width, height: r.height });
+        }, function (e) {
+          post({ op: "png", id: msg.id, error: String((e && e.message) || e) });
+        });
+      });
+      return;
+    }
+    if (op === "show") return drawMarkers(msg.problems);
+    if (op === "highlight") return highlight(msg.element_id);
+    if (op === "fit") return fit();
+    if (op === "zoom") return zoom(msg.factor || 1.25);
+    if (op === "theme") {
+      document.documentElement.setAttribute("data-theme", msg.theme === "dark" ? "dark" : "light");
+      return;
+    }
+    if (op === "strings") {
+      Object.assign(strings, msg.strings || {});
+      var fb = document.getElementById("fit-btn");
+      if (fb) fb.textContent = strings.fit;
+      if (!view.svg) document.getElementById("empty").textContent = strings.empty;
+      return;
+    }
+    if (op === "ping") return post({ op: "pong", id: msg.id });
+  }
+
+  window.odg = { handle: handle, version: 1 };
+  if (mode === "viewer") setupViewer();
+  post({ op: "ready", mode: mode, mermaid_version: (window.mermaid && mermaid.version) || null });
+})();

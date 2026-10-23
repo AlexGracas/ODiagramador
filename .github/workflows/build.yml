@@ -1,0 +1,81 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core:
+    name: core + CLI/MCP (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux webview dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev xvfb
+      - run: cargo test --workspace
+      - run: cargo build --release -p odg-cli -p odg-ffi
+      - name: Smoke test (headless render)
+        shell: bash
+        run: |
+          RUN=""
+          if [ "$RUNNER_OS" = "Linux" ]; then RUN="xvfb-run -a"; fi
+          $RUN ./target/release/odg check examples/diagrams/order-flow.mmd --no-save
+      - uses: actions/upload-artifact@v4
+        with:
+          name: odg-${{ runner.os }}
+          path: |
+            target/release/odg
+            target/release/odg.exe
+            target/release/odg_ffi.dll
+            target/release/libodg_ffi.a
+            target/release/libodg_ffi.so
+            target/release/libodg_ffi.dylib
+
+  macos-app:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: apps/macos/build-app.sh
+      - run: cd dist && zip -qry ODiagramador-macos.zip ODiagramador.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ODiagramador-macos
+          path: dist/ODiagramador-macos.zip
+
+  windows-app:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: cargo build --release -p odg-ffi -p odg-cli
+      - run: dotnet publish apps/windows/ODiagramador/ODiagramador.csproj -c Release -o dist/ODiagramador-windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ODiagramador-windows
+          path: dist/ODiagramador-windows
+
+  linux-app:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev libgtksourceview-5-dev libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev
+      - run: cargo build --release --manifest-path apps/linux/Cargo.toml
+      - run: cargo build --release -p odg-cli
+      - run: |
+          mkdir -p dist/odiagramador-linux
+          cp apps/linux/target/release/odiagramador target/release/odg apps/linux/odiagramador.desktop dist/odiagramador-linux/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ODiagramador-linux
+          path: dist/odiagramador-linux

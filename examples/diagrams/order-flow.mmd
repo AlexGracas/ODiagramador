@@ -1,0 +1,11 @@
+---
+title: Order flow
+---
+flowchart LR
+    start([Customer places order]) --> validate{Stock available?}
+    validate -->|yes| pay[Charge card]
+    validate -->|no| backorder[Create backorder]
+    pay --> ship[Ship order]
+    backorder --> notify[Notify customer]
+    ship --> done([Done])
+    notify --> done

@@ -1,0 +1,146 @@
+<Window x:Class="ODiagramador.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:ae="http://icsharpcode.net/sharpdevelop/avalonedit"
+        Title="ODiagramador" Width="1280" Height="820" MinWidth="900" MinHeight="560">
+    <DockPanel>
+        <!-- toolbar -->
+        <ToolBarTray DockPanel.Dock="Top">
+            <ToolBar>
+                <Button x:Name="OpenButton" Click="OnOpenFolder" />
+                <Button x:Name="NewButton" Click="OnNewDiagram" />
+                <Separator />
+                <Button x:Name="ExportPngButton" Click="OnExportPng" />
+                <Button x:Name="ExportSvgButton" Click="OnExportSvg" />
+                <Separator />
+                <Menu Background="Transparent">
+                    <MenuItem x:Name="McpMenu">
+                        <MenuItem Header="Claude Code" Tag="claude" Click="OnCopyMcp" />
+                        <MenuItem Header="Codex" Tag="codex" Click="OnCopyMcp" />
+                        <MenuItem Header="JSON (Cursor, Claude Desktop…)" Tag="json" Click="OnCopyMcp" />
+                    </MenuItem>
+                </Menu>
+                <Separator />
+                <ComboBox x:Name="LanguageBox" Width="110" SelectionChanged="OnLanguageChanged">
+                    <ComboBoxItem Content="English" Tag="en" />
+                    <ComboBoxItem Content="Português" Tag="pt-BR" />
+                </ComboBox>
+            </ToolBar>
+        </ToolBarTray>
+
+        <!-- status bar -->
+        <StatusBar DockPanel.Dock="Bottom">
+            <TextBlock x:Name="StatusText" TextTrimming="CharacterEllipsis" />
+        </StatusBar>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="240" MinWidth="160" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- sidebar -->
+            <DockPanel Grid.Column="0">
+                <TextBlock x:Name="DiagramsHeader" DockPanel.Dock="Top" Margin="8,6" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock x:Name="EmptyText" DockPanel.Dock="Top" Margin="8" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
+                <ListBox x:Name="DiagramList" BorderThickness="0" SelectionChanged="OnDiagramSelected">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="2">
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding Glyph}" Width="20" />
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding Badge}" Foreground="{StaticResource MutedBrush}" />
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}" />
+                                    <TextBlock Text="{Binding Path}" FontSize="11" Foreground="{StaticResource MutedBrush}" />
+                                </StackPanel>
+                            </DockPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" />
+
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="3*" MinHeight="200" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" MinHeight="120" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*" MinWidth="220" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="3*" MinWidth="280" />
+                    </Grid.ColumnDefinitions>
+                    <DockPanel Grid.Column="0">
+                        <TextBlock x:Name="AgentBadge" DockPanel.Dock="Top" HorizontalAlignment="Right" Margin="6,2"
+                                   Foreground="#8250DF" Visibility="Collapsed" />
+                        <ae:TextEditor x:Name="Editor" FontFamily="Cascadia Mono, Consolas" FontSize="13"
+                                       ShowLineNumbers="True" WordWrap="False" TextChanged="OnSourceChanged" />
+                    </DockPanel>
+                    <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" />
+                    <wv2:WebView2 x:Name="Viewer" Grid.Column="2" />
+                </Grid>
+                <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch" />
+                <TabControl Grid.Row="2" x:Name="Tabs">
+                    <TabItem x:Name="ProblemsTab">
+                        <ListBox x:Name="ProblemList" BorderThickness="0" SelectionChanged="OnProblemSelected">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="2">
+                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Glyph}" Width="22" />
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Location}" Foreground="{StaticResource MutedBrush}" />
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding Hint}" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </TabItem>
+                    <TabItem x:Name="FeedbackTab">
+                        <DockPanel>
+                            <DockPanel DockPanel.Dock="Bottom" Margin="4">
+                                <Button x:Name="AddFeedbackButton" DockPanel.Dock="Right" Margin="4,0,0,0" Padding="8,2" Click="OnAddFeedback" />
+                                <TextBlock x:Name="ElementTag" DockPanel.Dock="Left" Margin="0,0,6,0" VerticalAlignment="Center"
+                                           FontFamily="Consolas" Foreground="{StaticResource MutedBrush}" />
+                                <TextBox x:Name="FeedbackBox" KeyDown="OnFeedbackKey" />
+                            </DockPanel>
+                            <ListBox x:Name="FeedbackList" BorderThickness="0">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="2">
+                                            <TextBlock DockPanel.Dock="Left" Text="{Binding Glyph}" Width="22" />
+                                            <Button DockPanel.Dock="Right" Tag="{Binding Id}" Click="OnResolveFeedback"
+                                                    Content="✔" Padding="6,0" />
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding Meta}" FontSize="11" Foreground="{StaticResource MutedBrush}" />
+                                            </StackPanel>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </TabItem>
+                    <TabItem x:Name="ActivityTab">
+                        <ListBox x:Name="ActivityList" BorderThickness="0" FontFamily="Consolas">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Glyph}" Width="22" />
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding When}" Foreground="{StaticResource MutedBrush}" />
+                                        <TextBlock Text="{Binding Line}" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </TabItem>
+                </TabControl>
+            </Grid>
+        </Grid>
+    </DockPanel>
+</Window>

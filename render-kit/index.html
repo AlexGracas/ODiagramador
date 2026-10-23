@@ -1,0 +1,31 @@
+<!doctype html>
+<!--
+  ODiagramador render-kit.
+  Carregado por todas as WebViews (macOS WKWebView, Windows WebView2, Linux WebKitGTK)
+  e pelo renderizador headless (wry). Modos: ?mode=headless | ?mode=viewer
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ODiagramador</title>
+<link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+<div id="viewport">
+  <div id="stage"></div>
+</div>
+<div id="banner" hidden></div>
+<div id="empty" hidden></div>
+<div id="toolbar" hidden>
+  <button data-act="zoom-out" title="-">&#8722;</button>
+  <span id="zoom-label">100%</span>
+  <button data-act="zoom-in" title="+">+</button>
+  <button data-act="fit" id="fit-btn">Fit</button>
+</div>
+<!-- área de medição invisível usada no modo headless -->
+<div id="measure" aria-hidden="true"></div>
+<script src="vendor/mermaid.min.js"></script>
+<script src="bridge.js"></script>
+</body>
+</html>
