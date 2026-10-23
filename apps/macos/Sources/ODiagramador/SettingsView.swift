@@ -221,8 +221,8 @@ struct UpdateSheet: View {
                 }
             }
             if let info = updater.available, !info.notes.isEmpty {
-                ScrollView { Text(info.notes).font(.callout).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled) }
-                    .frame(height: 180)
+                ScrollView { MarkdownView(info.notes).padding(.trailing, 8) }
+                    .frame(height: 260)
             }
             if updater.available != nil, let m = updater.message {
                 HStack {
@@ -248,6 +248,6 @@ struct UpdateSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 460)
+        .frame(width: 520)
     }
 }

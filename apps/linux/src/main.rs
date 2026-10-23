@@ -1205,7 +1205,17 @@ fn show_update(ui: &Ui) {
     let s = ui.state.borrow();
     let Some(info) = s.update.clone() else { return };
     let heading = i18n::t(s.lang, "ui-update-available", &[("version", info.latest.as_str().into()), ("current", info.current.as_str().into())]);
-    let dialog = adw::MessageDialog::new(Some(&ui.window), Some(&heading), Some(&info.notes));
+    let dialog = adw::MessageDialog::new(Some(&ui.window), Some(&heading), None);
+    // release notes are Markdown: shown as Pango markup in a scrollable label
+    let notes = gtk::Label::builder()
+        .use_markup(true)
+        .label(odg_core::markdown::to_pango(&info.notes))
+        .wrap(true)
+        .xalign(0.0)
+        .selectable(true)
+        .build();
+    let scroll = gtk::ScrolledWindow::builder().child(&notes).min_content_height(260).max_content_height(360).propagate_natural_height(true).hscrollbar_policy(gtk::PolicyType::Never).build();
+    dialog.set_extra_child(Some(&scroll));
     dialog.add_response("later", &s.t("ui-update-later"));
     dialog.add_response("page", &s.t("ui-update-release-page"));
     dialog.set_response_appearance("page", adw::ResponseAppearance::Suggested);

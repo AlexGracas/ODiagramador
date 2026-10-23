@@ -970,11 +970,7 @@ internal static class Prompt
     public static string? Update(Window owner, string title, string notes, string install, string later, string page)
     {
         string? choice = null;
-        var notesBox = new TextBox
-        {
-            Text = notes, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, Width = 520, MaxHeight = 300,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 8, 0, 10), BorderThickness = new Thickness(0),
-        };
+        var notesView = MarkdownView.Create(notes, 560, 360);
         var installButton = new Button { Content = install, IsDefault = true, Padding = new Thickness(12, 2, 12, 2), Margin = new Thickness(0, 0, 6, 0) };
         var pageButton = new Button { Content = page, Padding = new Thickness(12, 2, 12, 2), Margin = new Thickness(0, 0, 6, 0) };
         var laterButton = new Button { Content = later, IsCancel = true, Padding = new Thickness(12, 2, 12, 2) };
@@ -983,8 +979,8 @@ internal static class Prompt
         buttons.Children.Add(pageButton);
         buttons.Children.Add(laterButton);
         var panel = new StackPanel { Margin = new Thickness(14) };
-        panel.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, FontSize = 14, TextWrapping = TextWrapping.Wrap, MaxWidth = 520 });
-        panel.Children.Add(notesBox);
+        panel.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, FontSize = 14, TextWrapping = TextWrapping.Wrap, MaxWidth = 560 });
+        panel.Children.Add(notesView);
         panel.Children.Add(buttons);
         var win = Dialog(owner, "ODiagramador", panel);
         installButton.Click += (_, _) => { choice = "install"; win.Close(); };

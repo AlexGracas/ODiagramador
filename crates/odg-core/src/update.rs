@@ -18,6 +18,7 @@ pub struct UpdateInfo {
     pub asset_name: Option<String>,
     pub asset_url: Option<String>,
     pub asset_size: Option<u64>,
+    /// What changed since `current` (the release's "what's new" sections newer than it), Markdown.
     pub notes: String,
 }
 
@@ -85,8 +86,34 @@ pub fn evaluate(release_json: &str, current: &str, platform: &str) -> Result<Upd
         asset_name: asset.map(|a| a.name.clone()),
         asset_url: asset.map(|a| a.browser_download_url.clone()),
         asset_size: asset.map(|a| a.size),
-        notes: rel.body.chars().take(4000).collect(),
+        notes: changes_since(&rel.body, current).chars().take(6000).collect(),
     })
+}
+
+/// The `## …` sections of release notes whose heading names a version newer than `current`
+/// ("Novidades da 0.3.0", "What's new in 0.3.0"), newest first as written. Without such sections,
+/// the whole text.
+pub fn changes_since(notes: &str, current: &str) -> String {
+    let Some(cur) = parse_version(current) else { return notes.to_string() };
+    let mut out = String::new();
+    let mut keep = false;
+    for line in notes.lines() {
+        if let Some(title) = line.strip_prefix("## ") {
+            let version = title.split_whitespace().find_map(|w| parse_version(w.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.')).filter(|_| w.contains('.')));
+            keep = version.is_some_and(|v| v > cur);
+        } else if line.starts_with("# ") {
+            keep = false;
+        }
+        if keep {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if out.trim().is_empty() {
+        notes.to_string()
+    } else {
+        out.trim().to_string()
+    }
 }
 
 #[cfg(test)]
@@ -121,5 +148,12 @@ mod tests {
         assert!(!evaluate(REL, "0.2.0", "macos").unwrap().available);
         assert!(!evaluate(REL, "0.3.0", "macos").unwrap().available);
         assert!(evaluate("not json", "0.1.0", "macos").is_err());
+    }
+
+    #[test]
+    fn notes_keep_only_newer_changes() {
+        let notes = "Intro\n\n## Downloads\n| a | b |\n\n## Novidades da 0.3.0\n- agent\n\n## Novidades da 0.2.2\n- icon\n\n## Novidades da 0.2.1\n- log\n\n## Funcionalidades\n- all";
+        assert_eq!(changes_since(notes, "0.2.1"), "## Novidades da 0.3.0\n- agent\n\n## Novidades da 0.2.2\n- icon");
+        assert_eq!(changes_since("plain notes", "0.1.0"), "plain notes");
     }
 }

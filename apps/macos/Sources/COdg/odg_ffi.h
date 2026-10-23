@@ -9,6 +9,8 @@
  *   version                                             -> {version, mermaid, releases_api, releases_page}
  *   update_evaluate  {release_json, current, platform}  -> {available, latest, asset_url, page_url, notes...}
  *   strings          {lang}                             -> {key: text}   (all UI strings)
+ *   markdown_blocks  {text}                             -> [{kind, level, number?, spans[{text, bold?, italic?, code?, link?}]}]
+ *                    kind: heading | paragraph | bullet | code | quote | rule   (to draw Markdown natively)
  *   t                {lang, key, args?}                 -> string
  *   analyze          {source, raw, lang?, workspace?, path?, save?, log?, actor?} -> Report
  *                    (raw = the "result" object posted by render-kit bridge.js)

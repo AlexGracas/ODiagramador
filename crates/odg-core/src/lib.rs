@@ -8,6 +8,7 @@ pub mod edit;
 pub mod engine;
 pub mod i18n;
 pub mod lint;
+pub mod markdown;
 pub mod model;
 pub mod report;
 pub mod source;

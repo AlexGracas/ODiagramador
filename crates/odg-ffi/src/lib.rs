@@ -58,6 +58,7 @@ pub fn invoke(method: &str, a: &Value) -> R {
         // args: release_json (GitHub latest-release response), current, platform (macos|windows|linux)
         "update_evaluate" => to_value(odg_core::update::evaluate(arg(a, "release_json")?, arg(a, "current")?, arg(a, "platform")?)?),
         "strings" => to_value(i18n::all_strings(lang(a))),
+        "markdown_blocks" => to_value(odg_core::markdown::to_blocks(arg(a, "text")?)),
         "t" => {
             let key = arg(a, "key")?;
             let args = a.get("args").and_then(Value::as_object).cloned().unwrap_or_default();

@@ -16,6 +16,7 @@ unic-langid.workspace = true
 regex.workspace = true
 sha2.workspace = true
 time.workspace = true
+pulldown-cmark = { version = "0.12", default-features = false }
 
 [dev-dependencies]
 tempfile.workspace = true
