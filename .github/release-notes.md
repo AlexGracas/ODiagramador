@@ -28,6 +28,16 @@ claude mcp add odiagramador -- /Applications/ODiagramador.app/Contents/MacOS/odg
 
 No Windows o caminho é `...\ODiagramador\odg.exe`. Guia completo: [docs/AGENTS.md](https://github.com/AlexGracas/ODiagramador/blob/main/docs/AGENTS.md).
 
+## Novidades da 0.4.0
+- **O agente controla a sua visualização** (novas ferramentas MCP):
+  - `open_diagram` troca o diagrama aberto no app;
+  - `set_zoom` muda o zoom (`1.5`, `"150%"`, `fit`, `in`, `out`);
+  - `center_on_element` coloca um elemento no meio da tela (ele pisca rapidamente para você achar).
+- `get_viewer_status` agora informa também o zoom, o elemento no centro da tela e os elementos visíveis.
+- Para mandar mensagens: `notify_user` (aviso) e `ask_user` (pergunta com botões de resposta).
+
+> Se o seu agente não mostra essas ferramentas, atualize a configuração do MCP (botão **MCP** do app) para usar o `odg` desta versão e reinicie o agente.
+
 ## Novidades da 0.3.2
 - **Windows: atualização automática corrigida.** Antes, clicar em *Atualizar agora* reabria a mesma versão (o script auxiliar falhava sem avisar). Agora o próprio app troca os arquivos, confere a versão instalada, desfaz tudo se algo der errado e registra cada passo em `%LocalAppData%\ODiagramador\odiagramador.log`.
 
