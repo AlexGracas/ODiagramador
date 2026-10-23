@@ -56,7 +56,11 @@ struct SourceEditor: NSViewRepresentable {
         if tv.string != text {
             let sel = tv.selectedRanges
             tv.string = text
-            tv.selectedRanges = sel.filter { $0.rangeValue.upperBound <= (text as NSString).length }
+            // AppKit throws on an empty selection list: when the text shrank (element deleted,
+            // agent rewrite) keep the ranges that still fit, else put the caret at the end.
+            let length = (text as NSString).length
+            let kept = sel.filter { $0.rangeValue.upperBound <= length }
+            tv.selectedRanges = kept.isEmpty ? [NSValue(range: NSRange(location: length, length: 0))] : kept
         }
         context.coordinator.highlight()
         if let line = scrollToLine {
