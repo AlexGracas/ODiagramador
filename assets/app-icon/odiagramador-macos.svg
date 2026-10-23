@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- macOS variant (generated from odiagramador.svg by scripts/build-icons.sh): Apple grid margin + tile shadow -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3D7BFF"/>
+      <stop offset="0.55" stop-color="#5B4BF5"/>
+      <stop offset="1" stop-color="#8E2DE2"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.22" cy="0.12" r="0.75">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="nodeBlue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DCE7FF"/>
+    </linearGradient>
+    <linearGradient id="nodePurple" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EADCFF"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#1B0B5A" flood-opacity="0.35"/>
+    </filter>
+  
+    <filter id="tile" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <g transform="translate(100 100) scale(0.8046875)" filter="url(#tile)">
+
+  <rect x="0" y="0" width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="228" fill="url(#glow)"/>
+
+  <g filter="url(#soft)">
+    <!-- connectors -->
+    <path d="M512 404 V520 M512 520 H316 V606 M512 520 H708 V590"
+          fill="none" stroke="#FFFFFF" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.92"/>
+    <!-- top node: rounded rectangle -->
+    <rect x="332" y="236" width="360" height="176" rx="52" fill="url(#nodeBlue)"/>
+    <rect x="404" y="306" width="216" height="36" rx="18" fill="#5B6CFF" fill-opacity="0.85"/>
+    <!-- left node: circle -->
+    <circle cx="316" cy="706" r="112" fill="url(#nodeBlue)"/>
+    <circle cx="316" cy="706" r="42" fill="#3D7BFF" fill-opacity="0.9"/>
+    <!-- right node: diamond (decision) -->
+    <path d="M708 576 L836 704 L708 832 L580 704 Z" fill="url(#nodePurple)" stroke="url(#nodePurple)" stroke-width="28" stroke-linejoin="round"/>
+    <path d="M708 662 L750 704 L708 746 L666 704 Z" fill="#8E2DE2" fill-opacity="0.9"/>
+  </g>
+
+  <!-- AI spark -->
+  <path d="M808 138 C816 196 834 214 892 222 C834 230 816 248 808 306 C800 248 782 230 724 222 C782 214 800 196 808 138 Z"
+        fill="#FFFFFF" fill-opacity="0.95"/>
+  <path d="M884 300 C887 322 894 329 916 332 C894 335 887 342 884 364 C881 342 874 335 852 332 C874 329 881 322 884 300 Z"
+        fill="#FFFFFF" fill-opacity="0.75"/>
+
+  </g>
+</svg>

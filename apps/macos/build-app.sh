@@ -50,6 +50,7 @@ if [[ -n "${VERSION:-}" ]]; then
   plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP/Contents/Info.plist"
 fi
 cp "$ROOT/LICENSE" "$APP/Contents/Resources/LICENSE"
+cp "$ROOT/assets/app-icon/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 mkdir -p "$APP/Contents/Resources/icons"
 cp "$ROOT/assets/icons/"*.svg "$ROOT/assets/icons/README.md" "$APP/Contents/Resources/icons/"
 cp "$ROOT/render-kit/"{index.html,bridge.js,palette.js,viewer.css} "$APP/Contents/Resources/render-kit/"

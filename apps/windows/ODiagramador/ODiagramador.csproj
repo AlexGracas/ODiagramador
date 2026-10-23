@@ -16,6 +16,7 @@
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <RepoRoot>$(MSBuildThisFileDirectory)..\..\..\</RepoRoot>
+    <ApplicationIcon>$(RepoRoot)assets\app-icon\odiagramador.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

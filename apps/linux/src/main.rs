@@ -104,7 +104,23 @@ fn main() -> glib::ExitCode {
     app.run_with_args(&[] as &[&str])
 }
 
+/// The app icon, installed in the user's icon theme so windows, the dock and the .desktop entry can use it.
+fn install_icon() {
+    const SVG: &[u8] = include_bytes!("../../../assets/app-icon/odiagramador.svg");
+    let dir = glib::user_data_dir().join("icons/hicolor/scalable/apps");
+    let path = dir.join(format!("{APP_ID}.svg"));
+    if std::fs::read(&path).ok().as_deref() != Some(SVG) {
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(&path, SVG);
+    }
+    if let Some(display) = gdk::Display::default() {
+        gtk::IconTheme::for_display(&display).add_search_path(glib::user_data_dir().join("icons"));
+    }
+    gtk::Window::set_default_icon_name(APP_ID);
+}
+
 fn build_ui(app: &adw::Application, args: &[String]) {
+    install_icon();
     let prefs = Prefs::load();
     let lang = prefs.language.as_deref().map(Lang::parse).unwrap_or_else(Lang::from_env);
     let state = Rc::new(RefCell::new(State {
