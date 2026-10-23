@@ -28,6 +28,11 @@ claude mcp add odiagramador -- /Applications/ODiagramador.app/Contents/MacOS/odg
 
 No Windows o caminho é `...\ODiagramador\odg.exe`. Guia completo: [docs/AGENTS.md](https://github.com/AlexGracas/ODiagramador/blob/main/docs/AGENTS.md).
 
+## Novidades da 0.3.2
+- **Windows: atualização automática corrigida.** Antes, clicar em *Atualizar agora* reabria a mesma versão (o script auxiliar falhava sem avisar). Agora o próprio app troca os arquivos, confere a versão instalada, desfaz tudo se algo der errado e registra cada passo em `%LocalAppData%\ODiagramador\odiagramador.log`.
+
+> Quem está na 0.2.x ou 0.3.0/0.3.1 no Windows: baixe esta versão manualmente uma vez (descompacte por cima da pasta atual). A partir dela, as próximas atualizações são instaladas pelo app.
+
 ## Novidades da 0.3.1
 - **Tela de atualização** mostra as novidades formatadas (títulos, listas, **negrito**, `código`, links) em vez do texto Markdown cru, e só o que mudou desde a sua versão.
 - Observação: a tela de atualização é desenhada pela versão instalada; a formatação aparece a partir da próxima atualização depois desta.
