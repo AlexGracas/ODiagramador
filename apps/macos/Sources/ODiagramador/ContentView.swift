@@ -346,10 +346,16 @@ struct NewDiagramSheet: View {
     @EnvironmentObject var state: AppState
     @Binding var isPresented: Bool
     @State private var name = ""
+    @State private var kind = "flowchart"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(state.t("ui-new-diagram")).font(.headline)
+            Picker(state.t("ui-new-diagram-type"), selection: $kind) {
+                ForEach(AppState.diagramKinds, id: \.self) { k in
+                    Text(state.t("ui-type-\(k)")).tag(k)
+                }
+            }
             TextField(state.t("ui-new-diagram-name"), text: $name).onSubmit(create)
             HStack {
                 Spacer()
@@ -363,7 +369,7 @@ struct NewDiagramSheet: View {
 
     private func create() {
         guard !name.isEmpty else { return }
-        state.createDiagram(named: name)
+        state.createDiagram(named: name, kind: kind)
         isPresented = false
     }
 }

@@ -103,6 +103,32 @@ pub fn invoke(method: &str, a: &Value) -> R {
             Ok(Value::String(annotate_svg(svg, vb, &problems)))
         }
         "find_line" => Ok(json!(source::find_line(arg(a, "source")?, arg(a, "id")?))),
+        // Drag & drop / layout menu in the viewer → new source with updated `%% @odg` comments.
+        // args: source, op = move {id, x, y} | mode {mode} | reset {id?} | layer {id, layer?}
+        "layout_edit" => {
+            let src = arg(a, "source")?;
+            let num = |k: &str| a.get(k).and_then(Value::as_f64).ok_or_else(|| format!("missing number `{k}`"));
+            let out = match arg(a, "op")? {
+                "move" => source::set_node_position(src, arg(a, "id")?, num("x")?, num("y")?)?,
+                "mode" => source::set_layout_mode(src, arg(a, "mode")?)?,
+                "reset" => source::clear_positions(src, opt(a, "id")),
+                "layer" => source::set_node_layer(src, arg(a, "id")?, opt(a, "layer"))?,
+                other => return Err(format!("unknown layout op `{other}`")),
+            };
+            Ok(Value::String(out))
+        }
+        "layout_directives" => to_value(source::layout_directives(arg(a, "source")?)),
+        // Palette buttons → new source. args: source, construct, params (object)
+        "construct" => {
+            let params = a.get("params").cloned().unwrap_or(json!({}));
+            Ok(Value::String(odg_core::construct::apply(arg(a, "source")?, arg(a, "construct")?, &params)?))
+        }
+        // Inspector: rename / shape / delete / edge_label / edge_delete. args: source, action, params
+        "edit" => {
+            let params = a.get("params").cloned().unwrap_or(json!({}));
+            Ok(Value::String(odg_core::edit::apply(arg(a, "source")?, arg(a, "action")?, &params)?))
+        }
+        "template" => Ok(json!(odg_core::construct::template(arg(a, "kind")?, lang(a)))),
         "syntax_help" => Ok(json!(syntax::help(opt(a, "topic").unwrap_or("overview")))),
         "list" => to_value(ws(a)?.list().map_err(|e| e.to_string())?),
         "read" => Ok(Value::String(ws(a)?.read(arg(a, "path")?).map_err(|e| e.to_string())?)),
@@ -214,6 +240,9 @@ mod tests {
         assert_eq!(call("nope", json!({}))["ok"], false);
         let t = call("t", json!({"lang": "en", "key": "ui-line", "args": {"line": 4}}));
         assert_eq!(t["result"], "Line 4");
+        let moved = call("layout_edit", json!({"source": "flowchart TD\n A --> B\n", "op": "move", "id": "B", "x": 10, "y": 20}));
+        assert!(moved["result"].as_str().unwrap().contains("%% @odg pos B 10,20"));
+        assert_eq!(call("layout_edit", json!({"source": "x", "op": "mode", "mode": "grid"}))["ok"], false);
     }
 
     #[test]

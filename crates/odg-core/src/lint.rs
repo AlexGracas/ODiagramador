@@ -232,6 +232,35 @@ pub fn lint(src: &str, raw: &RawRender, lang: Lang, cfg: &LintConfig) -> Vec<Pro
         }
     }
 
+    // ---- @odg layout directives
+    let dirs = source::layout_directives(src);
+    let has_layout = dirs.mode != "auto" || !dirs.positions.is_empty() || !dirs.layers.is_empty();
+    let layout_capable = ["flowchart", "graph", "state", "class", "er", "requirement"].iter().any(|p| kind.starts_with(p));
+    if has_layout && !layout_capable {
+        let mut d = Draft::new(lang, Severity::Info, "W_LAYOUT_UNSUPPORTED", &[("type", kind.as_str().into())]);
+        d.line = dirs.mode_line.or(dirs.positions.first().map(|p| p.line));
+        out.push(d);
+    } else if has_layout {
+        if !source::LAYOUT_MODES.contains(&dirs.mode.as_str()) {
+            let mut d = Draft::new(lang, Severity::Warning, "W_LAYOUT_MODE", &[("mode", dirs.mode.as_str().into()), ("modes", source::LAYOUT_MODES.join(", ").into())]);
+            d.line = dirs.mode_line;
+            out.push(d);
+        }
+        let known = |id: &str| model.node(id).is_some();
+        for (id, line) in dirs.positions.iter().map(|p| (&p.id, p.line)).chain(dirs.layers.iter().map(|l| (&l.id, l.line))) {
+            if !known(id) {
+                let mut d = Draft::new(lang, Severity::Warning, "W_LAYOUT_UNKNOWN_ID", &[("id", id.as_str().into())]);
+                d.line = Some(line);
+                out.push(d);
+            }
+        }
+        if !dirs.positions.is_empty() && (dirs.mode == "auto" || dirs.mode == "elk") {
+            let mut d = Draft::new(lang, Severity::Info, "W_LAYOUT_IGNORED", &[("mode", dirs.mode.as_str().into())]);
+            d.line = Some(dirs.positions[0].line);
+            out.push(d);
+        }
+    }
+
     // ---- size and shape
     if model.nodes.len() > cfg.max_nodes || model.edges.len() > cfg.max_edges {
         out.push(Draft::new(
@@ -489,6 +518,23 @@ mod tests {
         let p = lint("%% c\nhello", &raw, Lang::En, &LintConfig::default());
         assert_eq!(codes(&p), vec!["E_UNKNOWN_TYPE"]);
         assert_eq!(p[0].line, Some(2));
+    }
+
+    #[test]
+    fn layout_directive_problems() {
+        let src = "flowchart TD\n A --> B\n%% @odg layout exact\n%% @odg pos Z 1,2\n";
+        let raw = flow(vec![node("A", "a", 0.0, 0.0), node("B", "b", 100.0, 0.0)], vec![("A", "B")]);
+        let p = lint(src, &raw, Lang::En, &LintConfig::default());
+        assert_eq!(codes(&p), vec!["W_LAYOUT_UNKNOWN_ID"]);
+        assert_eq!(p[0].line, Some(4));
+        let p = lint("flowchart TD\n A --> B\n%% @odg pos A 1,2\n", &raw, Lang::En, &LintConfig::default());
+        assert_eq!(codes(&p), vec!["W_LAYOUT_IGNORED"]);
+        let p = lint("flowchart TD\n A --> B\n%% @odg layout grid\n", &raw, Lang::En, &LintConfig::default());
+        assert_eq!(codes(&p), vec!["W_LAYOUT_MODE"]);
+        let mut seq = raw.clone();
+        seq.diagram_type = Some("sequence".into());
+        let p = lint("sequenceDiagram\n A->>B: x\n%% @odg layout exact\n", &seq, Lang::En, &LintConfig::default());
+        assert_eq!(codes(&p), vec!["W_LAYOUT_UNSUPPORTED"]);
     }
 
     #[test]

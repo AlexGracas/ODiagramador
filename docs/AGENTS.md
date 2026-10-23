@@ -45,6 +45,9 @@ On a Linux server without a display run `xvfb-run -a odg mcp …` (the renderer 
 | `patch_diagram(path, edits[{old_text,new_text}])` | Small fixes; each `old_text` must occur exactly once. |
 | `validate_diagram(source)` | Check text without saving. |
 | `render_diagram(path\|source, format, annotated)` | Look at the result again (PNG or SVG). |
+| `add_element(path, construct, params)` | Insert a well-formed element with the desktop palette's constructors (`flow.node`, `flow.edge`, `seq.message`, `class.relation`, `er.relation`, `direction`…); see the tool description for every construct and parameter. |
+| `edit_element(path, action, params)` | Rename, reshape or delete an existing element (`rename`, `shape`, `delete`, `edge_label`, `edge_delete`) without rewriting the file — deleting a node also removes its connections and keeps the neighbours' definitions. |
+| `arrange_diagram(path, mode?, positions?, layers?, reset_positions?)` | Fix the layout of graph diagrams: `elk`, `elk-interactive` (positions as hints) or `exact` (exact positions). Stored as `%% @odg` comments — see `get_syntax_help("layout")`. |
 | `inspect_diagram(path\|source)` | Text description of the layout (nodes with positions, edges, groups) — for models without vision. |
 | `list_diagrams()` / `get_diagram(path)` | Status of every diagram / numbered source + last report + open comments. |
 | `get_feedback(path?)` / `resolve_feedback(id, resolution)` | Read and close the human's comments. |
@@ -69,6 +72,11 @@ until valid and no warnings (or warnings are intentional)
 get_feedback → address comments → resolve_feedback
 ```
 
+Layout is separate from content: if the diagram is correct but hard to read, use
+`arrange_diagram` (switch to `elk`, pin nodes with `positions`, or `layers: first/last`)
+instead of rewriting the source. Coordinates are node centres in the same space as
+`inspect_diagram` bounding boxes.
+
 ## 4. Problem codes
 
 | Code | Severity | Meaning |
@@ -87,6 +95,10 @@ get_feedback → address comments → resolve_feedback
 | `W_WIDE` / `W_TALL` | info | Extreme aspect ratio — change direction. |
 | `W_FOREIGN_OBJECT` | info | HTML labels; PNG may miss text (use SVG). |
 | `W_RASTER` | warning | PNG could not be produced. |
+| `W_LAYOUT_MODE` | warning | Unknown `%% @odg layout` mode. |
+| `W_LAYOUT_UNKNOWN_ID` | warning | A `%% @odg pos/layer` line names a node that does not exist. |
+| `W_LAYOUT_IGNORED` | info | Positions given while the mode is `auto`/`elk`. |
+| `W_LAYOUT_UNSUPPORTED` | info | Layout comments on a diagram type without graph layout (sequence, gantt…). |
 
 Codes are stable English identifiers; `message` and `hint` follow the configured language.
 

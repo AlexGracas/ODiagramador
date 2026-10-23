@@ -43,9 +43,12 @@ final class AppState: ObservableObject {
         viewer.onResult = { [weak self] id, result in self?.renderFinished(id: id, result: result) }
         viewer.onSelect = { [weak self] element in self?.selectElement(element) }
         viewer.onSelectProblem = { [weak self] index in self?.selectProblem(index) }
+        viewer.onLayoutEdit = { [weak self] args in self?.applyLayoutEdit(args) }
+        viewer.onConstruct = { [weak self] args in self?.applyConstruct(args) }
+        viewer.onEdit = { [weak self] args in self?.applyEdit(args) }
         viewer.onReady = { [weak self] in
             guard let self else { return }
-            self.viewer.send(["op": "strings", "strings": ["fit": self.t("ui-fit"), "empty": self.t("ui-empty")]])
+            self.viewer.send(["op": "strings", "strings": self.strings])
             self.viewer.send(["op": "theme", "theme": self.darkMode ? "dark" : "light"])
             self.render()
         }
@@ -72,7 +75,7 @@ final class AppState: ObservableObject {
         if let ws = workspace {
             try? Core.run("set_config", ["workspace": ws.path, "lang": code])
         }
-        viewer.send(["op": "strings", "strings": ["fit": t("ui-fit"), "empty": t("ui-empty")]])
+        viewer.send(["op": "strings", "strings": strings])
         render()
     }
 
@@ -190,14 +193,17 @@ final class AppState: ObservableObject {
         render()
     }
 
-    func createDiagram(named name: String) {
+    static let diagramKinds = ["flowchart", "sequence", "class", "state", "er"]
+
+    func createDiagram(named name: String, kind: String = "flowchart") {
         guard let ws = workspace else { return }
         let slug = name.lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
             .joined(separator: "-")
         let path = "diagrams/\(slug.isEmpty ? "diagram" : slug).mmd"
-        let template = "flowchart LR\n    start([Start]) --> step[Do something]\n    step --> done([Done])\n"
+        let template = (try? Core.call("template", ["kind": kind, "lang": lang], as: String.self))
+            ?? "flowchart LR\n    start([Start]) --> done([Done])\n"
         do {
             let rel = try Core.call("write", ["workspace": ws.path, "path": path, "content": template, "actor": "human"], as: String.self)
             refreshList()
@@ -279,6 +285,37 @@ final class AppState: ObservableObject {
             if onDisk, let i = diagrams.firstIndex(where: { $0.path == path }) {
                 diagrams[i].status = DiagramStatus(valid: r.valid, errors: r.errorCount, warnings: r.warningCount, stale: false, summary: r.summary)
             }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: layout (drag & drop, layout menu)
+
+    /// Rewrites the `%% @odg` layout comments through the core, then saves and re-renders.
+    func applyLayoutEdit(_ args: [String: Any]) {
+        applySourceEdit("layout_edit", args)
+    }
+
+    /// Palette buttons: the core turns a constructor into Mermaid text.
+    func applyConstruct(_ args: [String: Any]) {
+        applySourceEdit("construct", args)
+    }
+
+    /// Inspector: rename / reshape / delete existing elements.
+    func applyEdit(_ args: [String: Any]) {
+        applySourceEdit("edit", args)
+    }
+
+    private func applySourceEdit(_ method: String, _ args: [String: Any]) {
+        guard selectedPath != nil else { return }
+        var call = args
+        call["source"] = source
+        do {
+            let updated = try Core.call(method, call, as: String.self)
+            guard updated != source else { return }
+            source = updated
+            flushSave()
         } catch {
             errorMessage = error.localizedDescription
         }

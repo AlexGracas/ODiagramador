@@ -55,6 +55,12 @@ final class ViewerBridge: NSObject, WKScriptMessageHandler {
     var onResult: ((Int, [String: Any]) -> Void)?
     var onSelect: ((String?) -> Void)?
     var onSelectProblem: ((Int) -> Void)?
+    /// Layout edits from the viewer: drag ("move"), layout menu ("layout-mode"), reset button.
+    var onLayoutEdit: (([String: Any]) -> Void)?
+    /// Constructor palette: { construct, params }.
+    var onConstruct: (([String: Any]) -> Void)?
+    /// Inspector: { action, params } (rename, shape, delete, edge_label, edge_delete).
+    var onEdit: (([String: Any]) -> Void)?
 
     func send(_ message: [String: Any]) {
         guard ready, let webView else {
@@ -85,6 +91,22 @@ final class ViewerBridge: NSObject, WKScriptMessageHandler {
             onSelect?(obj["element_id"] as? String)
         case "select-problem":
             if let i = obj["index"] as? Int { onSelectProblem?(i) }
+        case "move":
+            if let id = obj["element_id"] as? String, let x = obj["x"] as? Double, let y = obj["y"] as? Double {
+                onLayoutEdit?(["op": "move", "id": id, "x": x, "y": y])
+            }
+        case "layout-mode":
+            if let mode = obj["mode"] as? String { onLayoutEdit?(["op": "mode", "mode": mode]) }
+        case "reset-positions":
+            onLayoutEdit?(["op": "reset"])
+        case "edit":
+            if let action = obj["action"] as? String {
+                onEdit?(["action": action, "params": obj["params"] as? [String: Any] ?? [:]])
+            }
+        case "construct":
+            if let construct = obj["construct"] as? String {
+                onConstruct?(["construct": construct, "params": obj["params"] as? [String: Any] ?? [:]])
+            }
         default:
             break
         }

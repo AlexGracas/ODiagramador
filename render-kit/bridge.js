@@ -44,14 +44,15 @@
   }
 
   // ---------------------------------------------------------------- mermaid setup
-  function configure(theme) {
-    var key = theme || "default";
+  function configure(theme, layout) {
+    var key = (theme || "default") + "|" + (layout || "dagre");
     if (configuredTheme === key) return;
     var noMax = { useMaxWidth: false };
     mermaid.initialize({
       startOnLoad: false,
+      layout: layout || "dagre",
       securityLevel: "strict",
-      theme: key,
+      theme: theme || "default",
       fontFamily: FONT,
       htmlLabels: false,
       flowchart: { htmlLabels: false, useMaxWidth: false },
@@ -62,6 +63,39 @@
       kanban: noMax, radar: noMax, treemap: noMax
     });
     configuredTheme = key;
+  }
+
+  // ---------------------------------------------------------------- @odg layout directives
+  // %% @odg layout auto|elk|elk-interactive|exact
+  // %% @odg pos <id> <x>,<y>        node centre in diagram (SVG user) coordinates
+  // %% @odg layer <id> first|last
+  var LAYOUTS = { elk: "odg-elk", "elk-interactive": "odg-interactive", exact: "odg-exact" };
+  var GRAPH_TYPES = /^(flowchart|graph|state|class|er|requirement)/;
+
+  function parseDirectives(src) {
+    var d = { mode: "auto", pos: {}, layer: {} };
+    src.split(/\r?\n/).forEach(function (line) {
+      var m = line.match(/^\s*%%\s*@odg\s+(\S+)\s*(.*)$/);
+      if (!m) return;
+      var args = m[2].trim().split(/\s+/);
+      if (m[1] === "layout" && args[0]) d.mode = args[0];
+      else if (m[1] === "pos" && args.length >= 2) {
+        var xy = args[1].split(",");
+        var x = parseFloat(xy[0]), y = parseFloat(xy[1]);
+        if (isFinite(x) && isFinite(y)) d.pos[args[0]] = [x, y];
+      } else if (m[1] === "layer" && args.length >= 2) d.layer[args[0]] = args[1];
+    });
+    return d;
+  }
+
+  // a `layout:` key in the front matter would override ours: swap its value, keep line numbers
+  function withLayout(src, name) {
+    var lines = src.split("\n");
+    if (!lines.length || lines[0].trim() !== "---") return src;
+    for (var i = 1; i < lines.length && lines[i].trim() !== "---"; i++) {
+      lines[i] = lines[i].replace(/^(\s*layout:\s*)\S+/, "$1" + name);
+    }
+    return lines.join("\n");
   }
 
   // ---------------------------------------------------------------- errors
@@ -338,7 +372,15 @@
       view_box: null, model: { nodes: [], edges: [], groups: [] }, has_foreign_object: false,
       mermaid_version: (window.mermaid && mermaid.version) || null, duration_ms: 0
     };
-    configure(req.theme);
+    var dirs = parseDirectives(source);
+    var layoutName = LAYOUTS[dirs.mode] || null;
+    if (window.odgLayout) {
+      window.odgLayout.hints.pos = dirs.pos;
+      window.odgLayout.hints.layer = dirs.layer;
+    }
+    configure(req.theme, layoutName);
+    out.layout_mode = dirs.mode;
+    if (layoutName) source = withLayout(source, layoutName);
     try {
       await mermaid.parse(source);
     } catch (e) {
@@ -391,7 +433,11 @@
         out.raster_error = String((e && e.message) || e);
       }
     }
-    if (mode === "viewer") showSvg(svg);
+    if (mode === "viewer") {
+      showSvg(svg);
+      updateLayoutControls(out.diagram_type, dirs.mode);
+      if (window.odgPalette) window.odgPalette.update(out, req.source);
+    }
     else host.innerHTML = "";
     out.duration_ms = Math.round(performance.now() - t0);
     return out;
@@ -417,12 +463,16 @@
   function fit() {
     if (!view.svg) return;
     var pad = 24;
-    var vw = viewport.clientWidth - pad * 2, vh = viewport.clientHeight - pad * 2;
+    // keep the drawing below the constructor palette and above the bottom toolbar
+    var palette = document.getElementById("palette");
+    var top = palette && !palette.hidden ? palette.getBoundingClientRect().bottom : 0;
+    var bottom = 44;
+    var vw = viewport.clientWidth - pad * 2, vh = viewport.clientHeight - top - bottom - pad * 2;
     var s = Math.min(vw / view.width, vh / view.height, 2);
     if (!isFinite(s) || s <= 0) s = 1;
     view.scale = s;
     view.x = (viewport.clientWidth - view.width * s) / 2;
-    view.y = (viewport.clientHeight - view.height * s) / 2;
+    view.y = top + pad + (vh - view.height * s) / 2;
     applyTransform();
   }
 
@@ -537,17 +587,56 @@
     }
   }
 
+  // ---- layout controls (shared by every desktop app)
+  var layoutSelect = document.getElementById("layout-select");
+  var resetButton = document.getElementById("reset-positions");
+  var layoutBox = document.getElementById("layout-box");
+
+  function updateLayoutControls(type, layoutMode) {
+    view.graph = GRAPH_TYPES.test(type || "");
+    view.layoutMode = layoutMode || "auto";
+    layoutBox.hidden = !view.graph;
+    if (layoutSelect.querySelector('option[value="' + view.layoutMode + '"]')) layoutSelect.value = view.layoutMode;
+    resetButton.disabled = view.layoutMode === "auto" || view.layoutMode === "elk";
+    document.body.classList.toggle("can-drag", view.graph && (view.layoutMode === "elk-interactive" || view.layoutMode === "exact"));
+  }
+
+  function nodeCentre(el) {
+    var vb = viewBoxOf(view.svg);
+    var b = userBox(el, view.svg, vb);
+    return b ? { x: b.x + b.w / 2, y: b.y + b.h / 2 } : null;
+  }
+
   function setupViewer() {
     var drag = null;
+    layoutSelect.addEventListener("change", function () {
+      post({ op: "layout-mode", mode: layoutSelect.value });
+    });
+    resetButton.addEventListener("click", function () {
+      post({ op: "reset-positions" });
+    });
     viewport.addEventListener("mousedown", function (e) {
       if (e.button !== 0) return;
+      // dragging a node moves it only in the drag-enabled layouts (the menu says "drag"); a plain
+      // click must never rewrite the file, so auto/ELK layouts just select and pan
+      var draggable = view.graph && (view.layoutMode === "elk-interactive" || view.layoutMode === "exact");
+      var node = draggable && e.target.closest && e.target.closest("g.node[data-id]");
+      if (node) {
+        drag = { node: node, id: node.getAttribute("data-id"), centre: nodeCentre(node), transform: node.getAttribute("transform") || "", x: e.clientX, y: e.clientY, moved: false };
+        node.classList.add("odg-dragging");
+        return;
+      }
       drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false };
       viewport.classList.add("dragging");
     });
     window.addEventListener("mousemove", function (e) {
       if (!drag) return;
       var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-      if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+      if (Math.abs(dx) + Math.abs(dy) > 6) drag.moved = true;
+      if (drag.node) {
+        if (drag.moved) drag.node.setAttribute("transform", "translate(" + dx / view.scale + "," + dy / view.scale + ") " + drag.transform);
+        return;
+      }
       view.x = drag.vx + dx;
       view.y = drag.vy + dy;
       applyTransform();
@@ -555,16 +644,29 @@
     window.addEventListener("mouseup", function (e) {
       if (!drag) return;
       var moved = drag.moved;
+      var d = drag;
       drag = null;
       viewport.classList.remove("dragging");
+      if (d.node) {
+        d.node.classList.remove("odg-dragging");
+        if (moved && d.centre) {
+          var x = Math.round(d.centre.x + (e.clientX - d.x) / view.scale);
+          var y = Math.round(d.centre.y + (e.clientY - d.y) / view.scale);
+          post({ op: "move", element_id: d.id, x: x, y: y });
+          return;
+        }
+      }
       if (moved) return;
       var marker = e.target.closest && e.target.closest(".odg-marker");
       if (marker) return post({ op: "select-problem", index: +marker.getAttribute("data-problem") });
       var node = e.target.closest && e.target.closest("[data-id]");
-      if (node && node.getAttribute("data-et") !== "edge") {
+      var isEdge = node && (node.getAttribute("data-et") === "edge" || !!node.closest(".edgeLabel"));
+      if (node && !isEdge) {
+        if (window.odgPalette) window.odgPalette.select(node.getAttribute("data-id"));
         highlight(node.getAttribute("data-id"));
         post({ op: "select", element_id: node.getAttribute("data-id") });
       }
+      if (node && window.odgPalette) window.odgPalette.inspect(node.getAttribute("data-id"), isEdge, e.clientX, e.clientY);
     });
     viewport.addEventListener("wheel", function (e) {
       e.preventDefault();
@@ -595,7 +697,10 @@
       queue = queue.then(function () {
         return processDiagram(msg).then(function (result) {
           if (mode === "viewer") {
-            if (!String(msg.source || "").trim()) showEmpty();
+            if (!String(msg.source || "").trim()) {
+              showEmpty();
+              if (window.odgPalette) window.odgPalette.clear();
+            }
             else if (result.parse_error) showError(result.parse_error);
             else if (result.render_error) showError(result.render_error);
           }
@@ -626,15 +731,24 @@
     }
     if (op === "strings") {
       Object.assign(strings, msg.strings || {});
+      if (strings["ui-fit"]) strings.fit = strings["ui-fit"];
+      if (strings["ui-empty"]) strings.empty = strings["ui-empty"];
       var fb = document.getElementById("fit-btn");
       if (fb) fb.textContent = strings.fit;
+      [["auto", "ui-layout-auto"], ["elk", "ui-layout-elk"], ["elk-interactive", "ui-layout-interactive"], ["exact", "ui-layout-exact"]].forEach(function (p) {
+        var o = layoutSelect.querySelector('option[value="' + p[0] + '"]');
+        if (o && strings[p[1]]) o.textContent = strings[p[1]];
+      });
+      if (strings["ui-reset-positions"]) resetButton.title = strings["ui-reset-positions"];
+      if (strings["ui-layout"]) layoutSelect.title = strings["ui-layout"];
+      if (window.odgPalette) window.odgPalette.strings(strings);
       if (!view.svg) document.getElementById("empty").textContent = strings.empty;
       return;
     }
     if (op === "ping") return post({ op: "pong", id: msg.id });
   }
 
-  window.odg = { handle: handle, version: 1 };
+  window.odg = { handle: handle, post: post, version: 1 };
   if (mode === "viewer") setupViewer();
   post({ op: "ready", mode: mode, mermaid_version: (window.mermaid && mermaid.version) || null });
 })();

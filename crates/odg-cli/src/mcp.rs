@@ -22,7 +22,7 @@ Workflow: (1) unsure about syntax? call get_syntax_help; (2) create_diagram / up
 save the file AND return the validation report plus an image; (3) look at the image: problems are numbered \
 markers that match the report; (4) fix errors first (line numbers given), then warnings; (5) call get_feedback \
 to read comments the human left in the desktop viewer, and resolve_feedback when done. \
-validate_diagram checks text without saving. inspect_diagram describes the layout in text for agents without vision. \
+validate_diagram checks text without saving. arrange_diagram fixes the layout (ELK, drag-like positions) without touching the diagram content. inspect_diagram describes the layout in text for agents without vision. \
 Diagrams are plain .mmd files in the workspace; the human sees your changes live in the ODiagramador app.";
 
 struct Server {
@@ -186,6 +186,44 @@ impl Server {
                     .collect();
                 let current = self.ws.read(path)?;
                 let next = odg_core::source::apply_edits(&current, &edits).map_err(ToolError)?;
+                self.save_and_report(path, &next, args)
+            }
+            "arrange_diagram" => {
+                let path = s("path").ok_or(ToolError("`path` is required".into()))?;
+                let mut src = self.ws.read(path)?;
+                if b("reset_positions", false) {
+                    src = odg_core::source::clear_positions(&src, None);
+                }
+                if let Some(mode) = s("mode") {
+                    src = odg_core::source::set_layout_mode(&src, mode).map_err(ToolError)?;
+                }
+                for p in args.get("positions").and_then(Value::as_array).into_iter().flatten() {
+                    let id = p.get("id").and_then(Value::as_str).ok_or(ToolError("each position needs `id`".into()))?;
+                    let x = p.get("x").and_then(Value::as_f64).ok_or(ToolError(format!("position of {id} needs `x`")))?;
+                    let y = p.get("y").and_then(Value::as_f64).ok_or(ToolError(format!("position of {id} needs `y`")))?;
+                    src = odg_core::source::set_node_position(&src, id, x, y).map_err(ToolError)?;
+                }
+                for l in args.get("layers").and_then(Value::as_array).into_iter().flatten() {
+                    let id = l.get("id").and_then(Value::as_str).ok_or(ToolError("each layer needs `id`".into()))?;
+                    let layer = l.get("layer").and_then(Value::as_str).filter(|v| *v != "none");
+                    src = odg_core::source::set_node_layer(&src, id, layer).map_err(ToolError)?;
+                }
+                self.save_and_report(path, &src, args)
+            }
+            "add_element" => {
+                let path = s("path").ok_or(ToolError("`path` is required".into()))?;
+                let construct = s("construct").ok_or(ToolError("`construct` is required".into()))?;
+                let params = args.get("params").cloned().unwrap_or(json!({}));
+                let src = self.ws.read(path)?;
+                let next = odg_core::construct::apply(&src, construct, &params).map_err(ToolError)?;
+                self.save_and_report(path, &next, args)
+            }
+            "edit_element" => {
+                let path = s("path").ok_or(ToolError("`path` is required".into()))?;
+                let action = s("action").ok_or(ToolError("`action` is required".into()))?;
+                let params = args.get("params").cloned().unwrap_or(json!({}));
+                let src = self.ws.read(path)?;
+                let next = odg_core::edit::apply(&src, action, &params).map_err(ToolError)?;
                 self.save_and_report(path, &next, args)
             }
             "validate_diagram" => {
@@ -554,6 +592,22 @@ fn tool_definitions() -> Value {
             "edits": {"type": "array", "items": {"type": "object", "properties": {"old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["old_text", "new_text"]}}}),
             &["path", "edits"]),
          "annotations": write},
+        {"name": "arrange_diagram", "title": "Fix layout",
+         "description": "Change how a graph diagram (flowchart, state, class, ER, requirement) is laid out, stored as `%% @odg` comments so the file stays plain Mermaid. mode: auto (Mermaid default) | elk (ELK automatic) | elk-interactive (positions are hints: ELK keeps their layer and order and routes the edges) | exact (nodes stay exactly at the given positions). positions: node centres in the same coordinates as inspect_diagram's bounding boxes (centre = x + w/2, y + h/2); giving positions switches auto/elk to elk-interactive. layers: pin a node to the first or last layer. Returns the report and the new image.",
+         "inputSchema": with(json!({"path": {"type": "string"},
+            "mode": {"type": "string", "enum": ["auto", "elk", "elk-interactive", "exact"]},
+            "positions": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}}, "required": ["id", "x", "y"]}},
+            "layers": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "layer": {"type": "string", "enum": ["first", "last", "none"]}}, "required": ["id", "layer"]}},
+            "reset_positions": {"type": "boolean", "description": "Remove every stored position first"}}), &["path"]),
+         "annotations": write},
+        {"name": "add_element", "title": "Add element",
+         "description": "Insert a well-formed element with the same constructors as the desktop palette (no syntax to remember). construct: direction{dir: TB|TD|BT|LR|RL} · flow.node{label, shape: rect|round|stadium|decision|database|circle|subroutine|io|hexagon|flag, from?, edge_label?, style?} · flow.edge{from, to, label?, style: arrow|open|dotted|thick|both} · flow.subgraph{title, members[]} · seq.participant{label, actor?} · seq.message{from, to, text, type: sync|reply|async|lost|line} · seq.block{block: alt|opt|loop|par|critical|break, from, to, condition} · seq.note{participant, text, position: right|left|over, other?} · seq.autonumber · class.class{name, stereotype?, attributes, methods} · class.relation{from, to, type: inheritance|composition|aggregation|association|dependency|realization|link, from_card?, to_card?, label?} · class.note{text, for?} · state.state{label} · state.transition{from, to, label?} · state.start{to} · state.end{from} · state.choice{label?} · state.note{state, text, position?} · er.entity{name, attributes} · er.relation{from, to, from_card: one|zero_one|zero_many|one_many, to_card, label, identifying?}. Returns the report and image.",
+         "inputSchema": with(json!({"path": {"type": "string"}, "construct": {"type": "string"}, "params": {"type": "object"}}), &["path", "construct"]),
+         "annotations": write},
+        {"name": "edit_element", "title": "Edit element",
+         "description": "Rename, reshape or delete an existing element without rewriting the file (same operations as the desktop inspector). action: rename{id, label} (flowchart/sequence/state change the label; class/ER rename the identifier everywhere) · shape{id, shape: rect|round|stadium|decision|database|circle|subroutine|io|hexagon|flag} (flowchart) · delete{id} (removes the element and its connections; neighbours keep their definitions) · edge_label{from, to, index?, label} · edge_delete{from, to, index?} (flowchart; index = n-th connection between the same pair, as in edge ids L_from_to_n). Returns the report and image.",
+         "inputSchema": with(json!({"path": {"type": "string"}, "action": {"type": "string", "enum": ["rename", "shape", "delete", "edge_label", "edge_delete"]}, "params": {"type": "object"}}), &["path", "action", "params"]),
+         "annotations": {"readOnlyHint": false, "destructiveHint": true, "openWorldHint": false}},
         {"name": "validate_diagram", "title": "Validate Mermaid",
          "description": "Check Mermaid source without saving: syntax errors with line/column/fix hints plus layout warnings.",
          "inputSchema": with(json!({"source": {"type": "string"}}), &["source"]),

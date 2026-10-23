@@ -13,6 +13,15 @@
  *                    (raw = the "result" object posted by render-kit bridge.js)
  *   annotate_svg     {svg, view_box?, problems}         -> svg string
  *   find_line        {source, id}                       -> line | null
+ *   layout_edit      {source, op, id?, x?, y?, mode?, layer?} -> new source
+ *                    op: move {id,x,y} | mode {mode} | reset {id?} | layer {id, layer?}
+ *   layout_directives {source}                          -> {mode, positions[], layers[]}
+ *   construct        {source, construct, params}        -> new source (palette buttons)
+ *   edit             {source, action, params}           -> new source (inspector)
+ *                    action: rename {id,label} | shape {id,shape} | delete {id}
+ *                            | edge_label {from,to,index,label} | edge_delete {from,to,index}
+ *   template         {kind, lang?}                      -> starter text | null
+ *                    kind: flowchart | sequence | class | state | er
  *   syntax_help      {topic}                            -> markdown | null
  *   list             {workspace}                        -> DiagramInfo[]
  *   read             {workspace, path}                  -> string

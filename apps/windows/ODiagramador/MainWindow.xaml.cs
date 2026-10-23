@@ -69,7 +69,9 @@ public partial class MainWindow : Window
         AddFeedbackButton.Content = T("ui-add-feedback");
         AgentBadge.Text = "✦ " + T("ui-changed-by-agent");
         EmptyText.Text = _workspace is null ? T("ui-no-workspace") : DiagramList.Items.Count == 0 ? T("ui-no-diagrams") : "";
-        Send(new JsonObject { ["op"] = "strings", ["strings"] = new JsonObject { ["fit"] = T("ui-fit"), ["empty"] = T("ui-empty") } });
+        var all = new JsonObject();
+        foreach (var (k, v) in _strings) all[k] = v;
+        Send(new JsonObject { ["op"] = "strings", ["strings"] = all });
     }
 
     // ------------------------------------------------------------------ viewer
@@ -150,6 +152,54 @@ public partial class MainWindow : Window
             case "select-problem":
                 SelectProblem(msg["index"]?.GetValue<int>() ?? 0);
                 break;
+            case "move":
+                ApplyLayoutEdit(new JsonObject
+                {
+                    ["op"] = "move", ["id"] = msg["element_id"]?.GetValue<string>(),
+                    ["x"] = msg["x"]?.GetValue<double>(), ["y"] = msg["y"]?.GetValue<double>(),
+                });
+                break;
+            case "layout-mode":
+                ApplyLayoutEdit(new JsonObject { ["op"] = "mode", ["mode"] = msg["mode"]?.GetValue<string>() });
+                break;
+            case "reset-positions":
+                ApplyLayoutEdit(new JsonObject { ["op"] = "reset" });
+                break;
+            case "edit":
+                ApplySourceEdit("edit", new JsonObject
+                {
+                    ["action"] = msg["action"]?.GetValue<string>(),
+                    ["params"] = msg["params"] is JsonNode ep ? JsonNode.Parse(ep.ToJsonString()) : new JsonObject(),
+                });
+                break;
+            case "construct":
+                ApplySourceEdit("construct", new JsonObject
+                {
+                    ["construct"] = msg["construct"]?.GetValue<string>(),
+                    ["params"] = msg["params"] is JsonNode prm ? JsonNode.Parse(prm.ToJsonString()) : new JsonObject(),
+                });
+                break;
+        }
+    }
+
+    /// <summary>Drag &amp; drop / layout menu: rewrite the %% @odg comments via the core, save, re-render.</summary>
+    private void ApplyLayoutEdit(JsonObject args) => ApplySourceEdit("layout_edit", args);
+
+    /// <summary>Palette constructors and layout edits: the core returns the new source.</summary>
+    private void ApplySourceEdit(string method, JsonObject args)
+    {
+        if (_selected is null) return;
+        args["source"] = Editor.Text;
+        try
+        {
+            var updated = Core.CallNode<string>(method, args);
+            if (updated == Editor.Text) return;
+            Editor.Document.Text = updated;
+            FlushSave();
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = ex.Message;
         }
     }
 
@@ -351,14 +401,17 @@ public partial class MainWindow : Window
     private void OnNewDiagram(object sender, RoutedEventArgs e)
     {
         if (_workspace is null) return;
-        var name = Prompt.Ask(this, T("ui-new-diagram"), T("ui-new-diagram-name"), T("ui-create"), T("ui-cancel"));
-        if (string.IsNullOrWhiteSpace(name)) return;
+        var kinds = new[] { "flowchart", "sequence", "class", "state", "er" };
+        var answer = Prompt.AskWithChoice(this, T("ui-new-diagram"), T("ui-new-diagram-type"),
+            kinds.Select(k => (k, T("ui-type-" + k))).ToArray(), T("ui-new-diagram-name"), T("ui-create"), T("ui-cancel"));
+        if (answer is null || string.IsNullOrWhiteSpace(answer.Value.Text)) return;
+        var (kind, name) = answer.Value;
         var slug = string.Join("-", System.Text.RegularExpressions.Regex.Split(name.ToLowerInvariant(), @"[^\p{L}\p{N}]+").Where(p => p.Length > 0));
         var path = $"diagrams/{(slug.Length == 0 ? "diagram" : slug)}.mmd";
         var rel = Core.Call<string>("write", new
         {
             workspace = _workspace, path, actor = "human",
-            content = "flowchart LR\n    start([Start]) --> step[Do something]\n    step --> done([Done])\n",
+            content = Core.CallOrDefault<string>("template", new { kind, lang = _lang }) ?? "flowchart LR\n    start([Start]) --> done([Done])\n",
         });
         RefreshList();
         DiagramList.SelectedItem = (DiagramList.ItemsSource as List<DiagramInfo>)?.FirstOrDefault(d => d.Path == rel);
@@ -478,6 +531,35 @@ public partial class MainWindow : Window
 /// <summary>Minimal input box (WPF has none built in).</summary>
 internal static class Prompt
 {
+    public static (string Choice, string Text)? AskWithChoice(Window owner, string title, string choiceLabel,
+        (string Value, string Label)[] choices, string label, string ok, string cancel)
+    {
+        var combo = new ComboBox { Margin = new Thickness(0, 6, 0, 10), MinWidth = 280 };
+        foreach (var c in choices) combo.Items.Add(new ComboBoxItem { Content = c.Label, Tag = c.Value });
+        combo.SelectedIndex = 0;
+        var box = new TextBox { Margin = new Thickness(0, 6, 0, 10), MinWidth = 280 };
+        var okButton = new Button { Content = ok, IsDefault = true, Padding = new Thickness(12, 2, 12, 2), Margin = new Thickness(0, 0, 6, 0) };
+        var cancelButton = new Button { Content = cancel, IsCancel = true, Padding = new Thickness(12, 2, 12, 2) };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        buttons.Children.Add(okButton);
+        buttons.Children.Add(cancelButton);
+        var panel = new StackPanel { Margin = new Thickness(14) };
+        panel.Children.Add(new TextBlock { Text = choiceLabel });
+        panel.Children.Add(combo);
+        panel.Children.Add(new TextBlock { Text = label });
+        panel.Children.Add(box);
+        panel.Children.Add(buttons);
+        var win = new Window
+        {
+            Title = title, Owner = owner, Content = panel, SizeToContent = SizeToContent.WidthAndHeight,
+            ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+        okButton.Click += (_, _) => win.DialogResult = true;
+        box.Loaded += (_, _) => box.Focus();
+        if (win.ShowDialog() != true) return null;
+        return (((ComboBoxItem)combo.SelectedItem).Tag as string ?? "flowchart", box.Text);
+    }
+
     public static string? Ask(Window owner, string title, string label, string ok, string cancel)
     {
         var box = new TextBox { Margin = new Thickness(0, 6, 0, 10), MinWidth = 280 };

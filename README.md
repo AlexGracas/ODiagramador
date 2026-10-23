@@ -8,11 +8,13 @@
 - 🧪 **CLI** (`odg check --json`, `odg render --annotated`) para CI e agentes sem MCP.
 - 🌐 Interface e mensagens em **português e inglês**; códigos de problema estáveis em inglês.
 - 📁 Diagramas são arquivos `.mmd` comuns no seu projeto (versionáveis no git).
+- 🧩 **Construtores**: ao criar um diagrama você escolhe o tipo (fluxograma, sequência, classes, estados, ER) e a prévia ganha uma paleta com os elementos daquele tipo (nó, decisão, ligação, grupo, participante, mensagem, bloco alt/loop, classe, relação, estado, transição, entidade…) e a **direção** (TB/BT/LR/RL). O texto Mermaid é gerado pelo núcleo e aparece no editor. **Clicar num elemento** abre o inspetor para renomear, trocar a forma ou excluir (as ligações do elemento saem junto; os vizinhos ficam); clicar numa ligação permite editar o texto ou excluí-la.
+- ✋ **Correção de layout** em fluxogramas, estados, classes, ER e requisitos: ELK automático, **arrastar nós** (ELK interativo, o arraste vira dica) ou **posições exatas**. As posições ficam em comentários `%% @odg`, e o arquivo continua Mermaid válido em qualquer outro lugar ([docs/syntax/layout.md](docs/syntax/layout.md)).
 
 ## Arquitetura / Architecture
 
 ```
-render-kit/ (HTML+JS, Mermaid 11.17.2 embutido)  ← usado por TODAS as WebViews e pelo renderizador headless
+render-kit/ (HTML+JS; bundle offline Mermaid 11.17.2 + ELK + layouts próprios) ← TODAS as WebViews e o headless
 crates/odg-core    Rust: modelo neutro, lint, relatório, workspace, i18n (Fluent), cheat-sheets
 crates/odg-render  Rust: WebView oculta (tao + wry) → render headless para CLI/MCP
 crates/odg-cli     Rust: binário `odg` (mcp, check, render, watch, mcp-config)
@@ -37,6 +39,12 @@ cargo build --release -p odg-cli -p odg-ffi
 
 ```bash
 ./target/release/odg check examples/diagrams --lang pt-BR
+```
+
+O bundle do render-kit (`render-kit/vendor/mermaid-odg.min.js`) já vem no repositório. Para regerá-lo depois de mudar `render-kit/src/` ou a versão do Mermaid/ELK (precisa de npm, só na hora do build):
+
+```bash
+scripts/build-render-kit.sh
 ```
 
 Apps:
@@ -70,6 +78,7 @@ Guia completo para agentes: [docs/AGENTS.md](docs/AGENTS.md) · Roteiro UML: [do
 | App macOS | testado manualmente (edição, prévia, problemas, comentários, atualização ao vivo vinda do agente) |
 | App Linux | compila (type-check); execução a validar em Linux |
 | App Windows | compila; execução a validar em Windows |
+| Layout (ELK, arrastar, posições exatas) | protótipo testado no macOS e via MCP; roteamento das arestas no modo exato/arrastado é simples (não desvia de nós) |
 | UML | pontos de extensão prontos; engine planejada em [docs/UML.md](docs/UML.md) |
 
-Mermaid © its contributors (MIT) — `render-kit/vendor/mermaid.LICENSE`.
+Mermaid © its contributors (MIT) — `render-kit/vendor/mermaid.LICENSE` · ELK/elkjs © Kiel University and others (EPL-2.0) — `render-kit/vendor/elkjs.LICENSE`.

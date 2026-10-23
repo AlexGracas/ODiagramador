@@ -17,13 +17,13 @@ struct ODiagramadorApp: App {
     @StateObject private var state = AppState()
 
     var body: some Scene {
-        WindowGroup {
+        // single window: odiagramador:// links (open_in_viewer) must reuse it, never spawn another
+        Window("ODiagramador", id: "main") {
             ContentView()
                 .environmentObject(state)
                 .frame(minWidth: 900, minHeight: 560)
                 .onOpenURL { state.handle(url: $0) }
         }
-        .handlesExternalEvents(matching: ["*"])
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button(state.t("ui-open-folder")) { state.chooseWorkspace() }.keyboardShortcut("o")

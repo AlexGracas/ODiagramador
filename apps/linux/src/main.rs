@@ -27,8 +27,9 @@ const APP_ID: &str = "io.odiagramador.app";
 const ASSETS: &[(&str, &[u8], &str)] = &[
     ("/index.html", include_bytes!("../../../render-kit/index.html"), "text/html"),
     ("/bridge.js", include_bytes!("../../../render-kit/bridge.js"), "text/javascript"),
+    ("/palette.js", include_bytes!("../../../render-kit/palette.js"), "text/javascript"),
     ("/viewer.css", include_bytes!("../../../render-kit/viewer.css"), "text/css"),
-    ("/vendor/mermaid.min.js", include_bytes!("../../../render-kit/vendor/mermaid.min.js"), "text/javascript"),
+    ("/vendor/mermaid-odg.min.js", include_bytes!("../../../render-kit/vendor/mermaid-odg.min.js"), "text/javascript"),
 ];
 
 struct State {
@@ -307,7 +308,8 @@ fn apply_strings(ui: &Ui) {
     mcp.append(Some("JSON"), Some("win.mcp-json"));
     ui.mcp_button.set_menu_model(Some(&mcp));
     drop(s);
-    send(ui, json!({"op": "strings", "strings": {"fit": ui.state.borrow().t("ui-fit"), "empty": ui.state.borrow().t("ui-empty")}}));
+    let all = ui.state.borrow().strings.clone();
+    send(ui, json!({"op": "strings", "strings": all}));
 }
 
 // ------------------------------------------------------------------ wiring
@@ -480,7 +482,44 @@ fn on_viewer_message(ui: &Ui, msg: Value) {
             }
         }
         "select-problem" => select_problem(ui, msg["index"].as_u64().unwrap_or(0) as usize),
+        "move" => {
+            if let (Some(id), Some(x), Some(y)) = (msg["element_id"].as_str(), msg["x"].as_f64(), msg["y"].as_f64()) {
+                apply_layout_edit(ui, |src| source::set_node_position(src, id, x, y));
+            }
+        }
+        "layout-mode" => {
+            if let Some(mode) = msg["mode"].as_str() {
+                apply_layout_edit(ui, |src| source::set_layout_mode(src, mode));
+            }
+        }
+        "reset-positions" => apply_layout_edit(ui, |src| Ok(source::clear_positions(src, None))),
+        "edit" => {
+            if let Some(action) = msg["action"].as_str() {
+                let params = msg["params"].clone();
+                apply_layout_edit(ui, |src| odg_core::edit::apply(src, action, &params));
+            }
+        }
+        "construct" => {
+            if let Some(c) = msg["construct"].as_str() {
+                let params = msg["params"].clone();
+                apply_layout_edit(ui, |src| odg_core::construct::apply(src, c, &params));
+            }
+        }
         _ => {}
+    }
+}
+
+/// Drag & drop / layout menu: rewrite the `%% @odg` comments, save and re-render.
+fn apply_layout_edit(ui: &Ui, edit: impl FnOnce(&str) -> Result<String, String>) {
+    if ui.state.borrow().selected.is_none() {
+        return;
+    }
+    let current = buffer_text(ui);
+    if let Ok(updated) = edit(&current) {
+        if updated != current {
+            set_buffer(ui, &updated);
+            flush_save(ui);
+        }
     }
 }
 
@@ -851,7 +890,15 @@ fn new_diagram_dialog(ui: &Ui) {
     }
     let dialog = adw::MessageDialog::new(Some(&ui.window), Some(&s.t("ui-new-diagram")), None);
     let entry = gtk::Entry::builder().placeholder_text(s.t("ui-new-diagram-name")).activates_default(true).build();
-    dialog.set_extra_child(Some(&entry));
+    let kinds = odg_core::construct::TEMPLATE_KINDS;
+    let labels: Vec<String> = kinds.iter().map(|k| s.t(&format!("ui-type-{k}"))).collect();
+    let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+    let kind_drop = gtk::DropDown::from_strings(&label_refs);
+    let extra = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    extra.append(&gtk::Label::builder().label(s.t("ui-new-diagram-type")).xalign(0.0).build());
+    extra.append(&kind_drop);
+    extra.append(&entry);
+    dialog.set_extra_child(Some(&extra));
     dialog.add_response("cancel", &s.t("ui-cancel"));
     dialog.add_response("create", &s.t("ui-create"));
     dialog.set_default_response(Some("create"));
@@ -870,9 +917,11 @@ fn new_diagram_dialog(ui: &Ui) {
             .collect::<Vec<_>>()
             .join("-");
         let path = format!("diagrams/{}.mmd", if slug.is_empty() { "diagram".into() } else { slug });
+        let kind = kinds.get(kind_drop.selected() as usize).copied().unwrap_or("flowchart");
         let created = {
             let s = u.state.borrow();
-            s.ws.as_ref().and_then(|ws| ws.write(&path, "flowchart LR\n    start([Start]) --> step[Do something]\n    step --> done([Done])\n", Actor::Human, None).ok())
+            let text = odg_core::construct::template(kind, s.lang).unwrap_or_default();
+            s.ws.as_ref().and_then(|ws| ws.write(&path, &text, Actor::Human, None).ok())
         };
         if let Some(rel) = created {
             refresh_list(&u);

@@ -10,6 +10,7 @@ const TOPICS: &[(&str, &str)] = &[
     ("gantt", include_str!("../../../docs/syntax/gantt.md")),
     ("pie", include_str!("../../../docs/syntax/pie.md")),
     ("mindmap", include_str!("../../../docs/syntax/mindmap.md")),
+    ("layout", include_str!("../../../docs/syntax/layout.md")),
 ];
 
 pub fn topics() -> Vec<&'static str> {
@@ -29,6 +30,7 @@ pub fn help(topic: &str) -> Option<&'static str> {
         s if s.starts_with("gantt") => "gantt",
         s if s.starts_with("pie") => "pie",
         s if s.starts_with("mindmap") => "mindmap",
+        s if s.starts_with("layout") || s.starts_with("elk") || s.starts_with("position") => "layout",
         _ => return None,
     };
     TOPICS.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)

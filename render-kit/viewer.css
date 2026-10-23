@@ -48,6 +48,79 @@ html, body {
   top: 0;
   visibility: hidden;
 }
+#palette {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 8px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  flex-wrap: wrap;
+  z-index: 3;
+}
+#palette[hidden], #ctor-form[hidden] { display: none; }
+.pal-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pal-btn:hover { border-color: var(--info); }
+.pal-icon { font-size: 14px; opacity: 0.85; }
+.pal-dir { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); white-space: nowrap; }
+.pal-dir select, .ctor-row select, .ctor-row input, .ctor-row textarea {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  padding: 3px 6px;
+}
+.pal-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 4px; }
+#ctor-form {
+  position: absolute;
+  top: 50px;
+  width: 300px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  z-index: 4;
+}
+.ctor-title { font-weight: 600; margin-bottom: 8px; }
+.ctor-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; color: var(--muted); }
+.ctor-row textarea { font-family: ui-monospace, "SF Mono", Consolas, monospace; resize: vertical; }
+.ctor-row .invalid { border-color: var(--error); }
+.ctor-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.ctor-actions button {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+.ctor-actions button.primary { background: var(--info); border-color: var(--info); color: #fff; }
+.ctor-actions button.danger { color: var(--error); border-color: var(--error); }
+.ctor-actions button.danger.armed { background: var(--error); color: #fff; }
+path[data-et="edge"] { cursor: pointer; }
+.edgeLabel { cursor: pointer; }
+body.has-palette #banner { top: calc(var(--palette-h, 44px) + 16px); }
 #banner {
   position: absolute;
   left: 12px;
@@ -93,6 +166,19 @@ html, body {
   color: var(--fg);
   cursor: pointer;
 }
+#toolbar select {
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+}
+#layout-box { display: inline-flex; gap: 4px; margin-left: 6px; }
+#layout-box[hidden] { display: none; }
+#toolbar button:disabled { opacity: 0.4; cursor: default; }
+g.node[data-id] { cursor: pointer; }
+body.can-drag g.node[data-id] { cursor: move; }
+.odg-dragging { opacity: 0.75; }
 #zoom-label { min-width: 44px; text-align: center; color: var(--muted); }
 .odg-marker { cursor: pointer; }
 .odg-marker rect { fill: none; stroke-width: 2.5; stroke-dasharray: 6 3; }
