@@ -22,6 +22,7 @@ public partial class App : Application
             MessageBox.Show(ex.Exception.Message + "\n\n" + LogPath, "ODiagramador", MessageBoxButton.OK, MessageBoxImage.Error);
             ex.Handled = true;
         };
+        AfterUpdate(e.Args);
         ApplyTheme(Prefs);
         RegisterUrlScheme();
         base.OnStartup(e);
@@ -44,6 +45,26 @@ public partial class App : Application
         {
             // logging must never break the app
         }
+    }
+
+    /// <summary>Started by the updater: let the old instance exit, then delete the files it left aside.</summary>
+    private static void AfterUpdate(string[] args)
+    {
+        var i = Array.IndexOf(args, "--after-update");
+        if (i >= 0 && i + 1 < args.Length && int.TryParse(args[i + 1], out var pid))
+        {
+            try
+            {
+                using var old = System.Diagnostics.Process.GetProcessById(pid);
+                old.WaitForExit(15000);
+            }
+            catch (ArgumentException)
+            {
+                // already gone
+            }
+            Log($"update: now running {Updater.CurrentVersion}");
+        }
+        Updater.CleanLeftovers();
     }
 
     /// <summary>Fluent theme (light/dark/system) on .NET 9+; the classic theme otherwise.</summary>
