@@ -89,4 +89,6 @@ Guia completo para agentes: [docs/AGENTS.md](docs/AGENTS.md) · Roteiro UML: [do
 | Layout (ELK, arrastar, posições exatas) | protótipo testado no macOS e via MCP; roteamento das arestas no modo exato/arrastado é simples (não desvia de nós) |
 | UML | pontos de extensão prontos; engine planejada em [docs/UML.md](docs/UML.md) |
 
-Mermaid © its contributors (MIT) — `render-kit/vendor/mermaid.LICENSE` · ELK/elkjs © Kiel University and others (EPL-2.0) — `render-kit/vendor/elkjs.LICENSE`.
+Licença / License: [MIT](LICENSE).
+
+Componentes de terceiros: Mermaid © its contributors (MIT) — `render-kit/vendor/mermaid.LICENSE` · ELK/elkjs © Kiel University and others (EPL-2.0) — `render-kit/vendor/elkjs.LICENSE`.
