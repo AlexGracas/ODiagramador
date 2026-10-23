@@ -28,7 +28,11 @@ claude mcp add odiagramador -- /Applications/ODiagramador.app/Contents/MacOS/odg
 
 No Windows o caminho é `...\ODiagramador\odg.exe`. Guia completo: [docs/AGENTS.md](https://github.com/AlexGracas/ODiagramador/blob/main/docs/AGENTS.md).
 
-## Nesta versão
+## Novidades da 0.1.1
+- Licença **MIT** (arquivo `LICENSE` incluído no repositório e nos pacotes).
+- Versão alinhada em todos os componentes (`odg --version`, app macOS e app Windows mostram 0.1.1).
+
+## Funcionalidades
 - Prévia ao vivo, painel de problemas com linha/coluna e dicas, comentários do humano para o agente, PT/EN.
 - Construtores por tipo de diagrama (fluxograma, sequência, classes, estados, ER) e seletor de direção.
 - Inspetor: renomear, trocar forma e excluir elementos e ligações.

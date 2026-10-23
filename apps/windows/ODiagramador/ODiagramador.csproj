@@ -10,7 +10,7 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>ODiagramador</AssemblyName>
     <RootNamespace>ODiagramador</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
@@ -33,6 +33,13 @@
       <Link>render-kit\vendor\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(RepoRoot)LICENSE">
+      <Link>LICENSE.txt</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <!-- Rust core + CLI/MCP server: cargo build, release profile, packages odg-ffi and odg-cli -->

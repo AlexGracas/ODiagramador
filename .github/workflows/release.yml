@@ -58,7 +58,7 @@ jobs:
           $version = "$env:TAG".TrimStart("v")
           dotnet publish apps/windows/ODiagramador/ODiagramador.csproj -c Release -r win-x64 --self-contained true `
             -p:Version=$version -o dist/ODiagramador
-          foreach ($f in "ODiagramador.exe", "odg_ffi.dll", "odg.exe", "render-kit/index.html", "render-kit/vendor/mermaid-odg.min.js") {
+          foreach ($f in "ODiagramador.exe", "odg_ffi.dll", "odg.exe", "LICENSE.txt", "render-kit/index.html", "render-kit/vendor/mermaid-odg.min.js") {
             if (-not (Test-Path "dist/ODiagramador/$f")) { throw "missing $f in the published app" }
           }
       - name: Smoke test app start-up
