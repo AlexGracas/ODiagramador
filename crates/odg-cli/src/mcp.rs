@@ -23,7 +23,8 @@ Workflow: (1) unsure about syntax? call get_syntax_help; (2) create_diagram / up
 save the file AND return the validation report plus an image; (3) look at the image: problems are numbered \
 markers that match the report; (4) fix errors first (line numbers given), then warnings; (5) call get_feedback \
 to read comments the human left in the desktop viewer, and resolve_feedback when done. \
-Talking to the human: show_diagram opens a diagram in their desktop viewer (optionally highlighting elements with a note); \
+Talking to the human: open_diagram / show_diagram change the diagram open in their desktop viewer (show_diagram can highlight elements with a note); \
+set_zoom changes the zoom (factor, \"150%\", fit, in, out) and center_on_element scrolls an element to the middle of the screen; \
 highlight_elements puts elements in evidence; notify_user shows a message; ask_user asks a question (optionally with choices) \
 and waits for the answer; get_user_replies reads answers later; get_viewer_status tells whether the human has the viewer open \
 and what they are looking at. Write tools accept show=true to open the changed diagram for the human. \
@@ -438,6 +439,51 @@ impl Server {
                 let (msg, note) = self.tell_viewer(Message { kind: kind.into(), path: Some(path.into()), element_ids: ids, text: s("message").map(str::to_string), level: s("level").map(str::to_string), ..Default::default() })?;
                 Ok(json!({"content": [{"type": "text", "text": note}], "structuredContent": {"message": msg}}))
             }
+            "open_diagram" => {
+                let path = s("path").ok_or(ToolError("`path` is required".into()))?;
+                if !self.ws.exists(path) {
+                    return Err(ToolError(format!("{path} does not exist")));
+                }
+                let (msg, note) = self.tell_viewer(Message { kind: "show".into(), path: Some(path.into()), text: s("message").map(str::to_string), ..Default::default() })?;
+                Ok(json!({"content": [{"type": "text", "text": note}], "structuredContent": {"message": msg}}))
+            }
+            "set_zoom" => {
+                let current = self.ws.presence().filter(|p| p.is_live()).and_then(|p| p.zoom).unwrap_or(1.0);
+                let (zoom, fit) = match args.get("zoom") {
+                    // 150 = 150%, 1.5 = factor
+                    Some(Value::Number(n)) => (n.as_f64().map(|x| if x > 8.0 { x / 100.0 } else { x }), false),
+                    Some(Value::String(v)) => match v.trim().trim_end_matches('%') {
+                        "fit" => (None, true),
+                        "in" => (Some(current * 1.25), false),
+                        "out" => (Some(current / 1.25), false),
+                        other => match other.parse::<f64>() {
+                            // "150" or "150%" = percent, "1.5" = factor
+                            Ok(x) if v.ends_with('%') || x > 8.0 => (Some(x / 100.0), false),
+                            Ok(x) => (Some(x), false),
+                            Err(_) => return Err(ToolError("`zoom`: a factor (1 = 100%), a percentage like \"150%\", or fit | in | out".into())),
+                        },
+                    },
+                    _ => return Err(ToolError("`zoom` is required: a factor (1 = 100%), \"150%\", or fit | in | out".into())),
+                };
+                let zoom = zoom.map(|z| z.clamp(0.05, 8.0));
+                let (msg, mut note) = self.tell_viewer(Message { kind: "view".into(), path: s("path").map(str::to_string), zoom, fit: fit.then_some(true), center_on: s("center_on").map(str::to_string), ..Default::default() })?;
+                if let Some(z) = zoom {
+                    note.push_str(&format!(" Zoom: {:.0}%.", z * 100.0));
+                }
+                Ok(json!({"content": [{"type": "text", "text": note}], "structuredContent": {"message": msg}}))
+            }
+            "center_on_element" => {
+                let id = s("element_id").ok_or(ToolError("`element_id` is required (a node id from the source / inspect_diagram)".into()))?;
+                let zoom = args.get("zoom").and_then(Value::as_f64).map(|z| z.clamp(0.05, 8.0));
+                let (msg, mut note) = self.tell_viewer(Message { kind: "view".into(), path: s("path").map(str::to_string), zoom, center_on: Some(id.into()), text: s("message").map(str::to_string), ..Default::default() })?;
+                let path = s("path").map(str::to_string).or_else(|| self.ws.presence().and_then(|p| p.path));
+                if let Some(src) = path.as_deref().and_then(|p| self.ws.read(p).ok()) {
+                    if !mentions_id(&src, id) {
+                        note.push_str(&format!("\nWarning: `{id}` was not found in {}.", path.unwrap_or_default()));
+                    }
+                }
+                Ok(json!({"content": [{"type": "text", "text": note}], "structuredContent": {"message": msg}}))
+            }
             "highlight_elements" => {
                 let path = s("path").ok_or(ToolError("`path` is required".into()))?;
                 let ids = strings(args, "element_ids");
@@ -512,10 +558,13 @@ impl Server {
                 let live = p.as_ref().is_some_and(|p| p.is_live());
                 let t = match (&p, live) {
                     (Some(p), true) => format!(
-                        "The human has the ODiagramador viewer open ({} {} on {}), looking at {}{}.",
+                        "The human has the ODiagramador viewer open ({} {} on {}), looking at {}{}{}{}{}.",
                         p.app, p.version, p.platform,
                         p.path.as_deref().unwrap_or("no diagram"),
-                        p.element_id.as_deref().map(|e| format!(", element `{e}` selected")).unwrap_or_default()
+                        p.zoom.map(|z| format!(" at {:.0}% zoom", z * 100.0)).unwrap_or_default(),
+                        p.center_element.as_deref().map(|e| format!(", centred on `{e}`")).unwrap_or_default(),
+                        if p.visible_elements.is_empty() { String::new() } else { format!(", {} element(s) on screen: {}", p.visible_elements.len(), p.visible_elements.join(", ")) },
+                        p.element_id.as_deref().map(|e| format!("; element `{e}` selected")).unwrap_or_default()
                     ),
                     _ => "The ODiagramador viewer is not open for this workspace. show_diagram / highlight_elements / ask_user will try to launch it.".into(),
                 };
@@ -563,6 +612,11 @@ impl Server {
         let what = match msg.kind.as_str() {
             "show" => format!("Opened {} in the human's viewer", msg.path.as_deref().unwrap_or("the diagram")),
             "highlight" => format!("Highlighted {} in {} for the human", msg.element_ids.join(", "), msg.path.as_deref().unwrap_or("the diagram")),
+            "view" => match (&msg.center_on, msg.fit) {
+                (Some(id), _) => format!("Centred the human's view on `{id}`"),
+                (None, Some(true)) => "Fitted the diagram to the human's window".to_string(),
+                _ => "Changed the zoom of the human's view".to_string(),
+            },
             "ask" => format!("Asked the human (question id {})", msg.id),
             _ => "Sent the message to the human".to_string(),
         };
@@ -926,6 +980,25 @@ fn tool_definitions() -> Value {
             "message": {"type": "string", "description": "Short note shown to the human"},
             "level": {"type": "string", "enum": ["info", "success", "warning", "error"]}}, "required": ["path"]},
          "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false}},
+        {"name": "open_diagram", "title": "Change the open diagram",
+         "description": "Switch the diagram open in the human's desktop viewer (launching the app if it is closed). Optional message shown beside it.",
+         "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "message": {"type": "string"}}, "required": ["path"]},
+         "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false}},
+        {"name": "set_zoom", "title": "Zoom the human's view",
+         "description": "Change the zoom of the diagram in the human's viewer: a factor (1 = 100%, 2 = 200%), a percentage like \"150%\", or fit (whole diagram) | in | out. Optional path opens that diagram first; optional center_on keeps an element in the middle. get_viewer_status tells the current zoom.",
+         "inputSchema": {"type": "object", "properties": {
+            "zoom": {"description": "Factor, \"150%\", or fit | in | out", "anyOf": [{"type": "number"}, {"type": "string"}]},
+            "path": {"type": "string"},
+            "center_on": {"type": "string", "description": "Element id to keep centred"}}, "required": ["zoom"]},
+         "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false}},
+        {"name": "center_on_element", "title": "Centre the human's view on an element",
+         "description": "Scroll the human's viewer so an element is in the middle of the screen (it pulses briefly so they spot it), optionally at a zoom factor and with a note. Optional path opens that diagram first. Use highlight_elements instead to keep elements emphasised.",
+         "inputSchema": {"type": "object", "properties": {
+            "element_id": {"type": "string"},
+            "path": {"type": "string"},
+            "zoom": {"type": "number", "description": "Factor (1 = 100%)"},
+            "message": {"type": "string"}}, "required": ["element_id"]},
+         "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false}},
         {"name": "highlight_elements", "title": "Highlight elements for the human",
          "description": "Put elements of a diagram in evidence in the human's viewer: the diagram opens, the elements glow, the rest dims and the view centres on them, with an optional note. Use it to point at what you changed or what you are asking about.",
          "inputSchema": {"type": "object", "properties": {
@@ -934,7 +1007,7 @@ fn tool_definitions() -> Value {
             "message": {"type": "string"},
             "level": {"type": "string", "enum": ["info", "success", "warning", "error"]}}, "required": ["path", "element_ids"]},
          "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false}},
-        {"name": "notify_user", "title": "Message the human",
+        {"name": "notify_user", "title": "Send a message to the human",
          "description": "Show a message to the human in the desktop viewer (progress, summary of what you did, a warning). Optionally about a diagram/elements. Does not wait for a reply; use ask_user for questions.",
          "inputSchema": {"type": "object", "properties": {
             "message": {"type": "string"},
@@ -956,7 +1029,7 @@ fn tool_definitions() -> Value {
          "description": "The answer to a question (question_id), or the recent conversation between agents and the human (questions, answers, notes).",
          "inputSchema": {"type": "object", "properties": {"question_id": {"type": "string"}, "limit": {"type": "integer"}}}, "annotations": ro},
         {"name": "get_viewer_status", "title": "Is the human watching?",
-         "description": "Whether the ODiagramador desktop viewer is open on this workspace, which diagram the human is looking at and which element they selected.",
+         "description": "Whether the ODiagramador desktop viewer is open on this workspace, which diagram the human is looking at, the zoom, the element in the centre of the screen, the elements on screen and the one they selected.",
          "inputSchema": {"type": "object", "properties": {}}, "annotations": ro},
         {"name": "open_in_viewer", "title": "Show to the human (legacy)",
          "description": "Same as show_diagram (kept for older prompts).",

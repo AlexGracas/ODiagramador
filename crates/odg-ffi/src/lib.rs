@@ -174,6 +174,13 @@ pub fn invoke(method: &str, a: &Value) -> R {
                 updated: 0,
                 path: opt(a, "path").filter(|p| !p.is_empty()).map(str::to_string),
                 element_id: opt(a, "element_id").filter(|p| !p.is_empty()).map(str::to_string),
+                zoom: a.get("zoom").and_then(Value::as_f64),
+                center_element: opt(a, "center_element").filter(|p| !p.is_empty()).map(str::to_string),
+                visible_elements: a
+                    .get("visible_elements")
+                    .and_then(Value::as_array)
+                    .map(|v| v.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                    .unwrap_or_default(),
             };
             ws(a)?.set_presence(&presence).map_err(|e| e.to_string())?;
             Ok(Value::Null)

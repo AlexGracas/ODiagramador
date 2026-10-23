@@ -67,11 +67,14 @@ copy ready-made configs for each client. Traffic is plain HTTP: outside a truste
 | `get_feedback(path?)` / `resolve_feedback(id, resolution)` | Read and close the human's comments. |
 | `get_activity(path?)` | Who changed what recently. |
 | `show_diagram(path, element_ids?, message?, level?)` | Open a diagram in the human's desktop viewer (launching the app if needed), optionally highlighting elements with a note. `open_in_viewer` is the old name. |
+| `open_diagram(path, message?)` | Change the diagram open in the human's viewer. |
+| `set_zoom(zoom, path?, center_on?)` | Zoom the human's view: factor (`1.5`), percentage (`"150%"`), or `fit` / `in` / `out`. |
+| `center_on_element(element_id, path?, zoom?, message?)` | Scroll so an element is in the middle of the screen (it pulses briefly). |
 | `highlight_elements(path, element_ids, message?, level?)` | Put elements in evidence: they glow, the rest dims, the view centres on them, and the note appears beside them. |
 | `notify_user(message, level?, path?, element_ids?)` | Show a message to the human (progress, summary, warning). Does not wait. |
 | `ask_user(question, options?, allow_text?, path?, element_ids?, wait_seconds?)` | Ask the human; options become buttons. Waits up to `wait_seconds` (default 60, max 600) and returns the answer, or a `question_id` to check later. |
 | `get_user_replies(question_id?)` | The answer to a question, or the recent conversation. |
-| `get_viewer_status()` | Is the viewer open on this workspace? Which diagram and element is the human looking at? |
+| `get_viewer_status()` | Is the viewer open on this workspace? Which diagram, zoom, element in the centre, elements on screen and selected element? |
 | `delete_diagram(path)` | Remove a diagram and its previews. |
 
 Resources: `diagram://<path>` (source), `diagram://<path>#report` (JSON), `diagram://<path>#preview` (PNG).

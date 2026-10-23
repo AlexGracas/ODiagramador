@@ -63,6 +63,8 @@ final class ViewerBridge: NSObject, WKScriptMessageHandler {
     var onEdit: (([String: Any]) -> Void)?
     /// The human answered an agent's question: (question_id, text).
     var onAnswer: ((String, String) -> Void)?
+    /// What the human sees: (zoom, element in the centre, elements on screen).
+    var onView: ((Double?, String?, [String]) -> Void)?
 
     func send(_ message: [String: Any]) {
         guard ready, let webView else {
@@ -91,6 +93,8 @@ final class ViewerBridge: NSObject, WKScriptMessageHandler {
             if let id = obj["id"] as? Int, let result = obj["result"] as? [String: Any] { onResult?(id, result) }
         case "select":
             onSelect?(obj["element_id"] as? String)
+        case "view":
+            onView?(obj["zoom"] as? Double, obj["center_element"] as? String, obj["visible_elements"] as? [String] ?? [])
         case "answer":
             if let id = obj["question_id"] as? String, let text = obj["text"] as? String { onAnswer?(id, text) }
         case "select-problem":

@@ -1,8 +1,8 @@
 //! Agent ⇄ human channel through the workspace (no sockets, works with any number of agents and viewers).
 //!
 //! - `.odiagramador/messages.jsonl` — append-only conversation. Agent entries are also commands for the
-//!   desktop viewer: `show` (open a diagram), `highlight` (put elements in evidence), `notify` (a message),
-//!   `ask` (a question with optional choices). The human's replies are `answer` entries (`reply_to` = question id).
+//!   desktop viewer: `show` (open a diagram), `highlight` (put elements in evidence), `view` (zoom / centre on
+//!   an element), `notify` (a message), `ask` (a question with optional choices). The human's replies are `answer` entries (`reply_to` = question id).
 //! - `.odiagramador/viewer.json` — presence: the desktop app rewrites it every few seconds with what the human
 //!   is looking at, so an agent knows whether anyone will see its message.
 
@@ -28,7 +28,7 @@ pub struct Message {
     /// Seconds since the Unix epoch (for ages and ordering).
     pub epoch: u64,
     pub from: Option<Actor>,
-    /// show | highlight | notify | ask | answer
+    /// show | highlight | view | notify | ask | answer
     pub kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
@@ -45,6 +45,15 @@ pub struct Message {
     /// `ask`: whether a free-text reply is allowed besides the options.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allow_text: Option<bool>,
+    /// `view`: zoom factor (1 = 100 %).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zoom: Option<f64>,
+    /// `view`: fit the whole diagram in the window (before zoom / centre).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fit: Option<bool>,
+    /// `view`: element to bring to the centre of the screen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub center_on: Option<String>,
     /// `answer`: the question it replies to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply_to: Option<String>,
@@ -67,6 +76,15 @@ pub struct Presence {
     /// Element the human selected.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub element_id: Option<String>,
+    /// Current zoom factor of the preview (1 = 100 %).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zoom: Option<f64>,
+    /// Element closest to the centre of the preview.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub center_element: Option<String>,
+    /// Elements (at least partly) on screen.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub visible_elements: Vec<String>,
 }
 
 impl Presence {

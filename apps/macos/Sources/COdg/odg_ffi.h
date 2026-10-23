@@ -36,10 +36,11 @@
  *   add_feedback     {workspace, path, text, element_id?, line?, author?} -> Feedback
  *   resolve_feedback {workspace, id, resolution?, actor?} -> Feedback
  *   viewer_inbox     {workspace, cursor?}               -> {cursor, messages[]}  agent messages for the viewer:
- *                    kind show | highlight | notify | ask (no cursor = recent + unanswered questions)
+ *                    kind show | highlight | view | notify | ask (no cursor = recent + unanswered questions)
  *   answer           {workspace, question_id, text}     -> Message (the human's reply)
  *   messages         {workspace, limit?}                -> Message[] (conversation, oldest first)
- *   set_presence     {workspace, path?, element_id?, app?, version?, platform?}  (call every ~2 s)
+ *   set_presence     {workspace, path?, element_id?, zoom?, center_element?, visible_elements?,
+ *                    app?, version?, platform?}  (call every ~2 s)
  *   clear_presence   {workspace}                         (viewer closing / switching folder)
  *   config           {workspace}                        -> {lang?, theme?, font?}
  *   set_config       {workspace, lang?, theme?, font?}   (merges; "" clears)

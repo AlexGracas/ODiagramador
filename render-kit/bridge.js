@@ -460,6 +460,32 @@
     stage.style.transform = "translate(" + view.x + "px," + view.y + "px) scale(" + view.scale + ")";
     var label = document.getElementById("zoom-label");
     if (label) label.textContent = Math.round(view.scale * 100) + "%";
+    reportView();
+  }
+
+  // ---- what the human sees (zoom, element in the centre, elements on screen) for agents: get_viewer_status
+  var viewReportTimer = null;
+  function reportView() {
+    if (mode !== "viewer") return;
+    clearTimeout(viewReportTimer);
+    viewReportTimer = setTimeout(function () {
+      if (!view.svg) return post({ op: "view", zoom: view.scale, center_element: null, visible_elements: [] });
+      var vr = viewport.getBoundingClientRect();
+      var cx = vr.left + vr.width / 2, cy = vr.top + vr.height / 2;
+      var seen = {}, visible = [], best = null, bestD = Infinity;
+      var els = view.svg.querySelectorAll("[data-id]");
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i], id = el.getAttribute("data-id");
+        if (!id || seen[id] || el.getAttribute("data-et") === "edge" || el.closest(".edgeLabel")) continue;
+        seen[id] = true;
+        var b = el.getBoundingClientRect();
+        if (b.right < vr.left || b.left > vr.right || b.bottom < vr.top || b.top > vr.bottom) continue;
+        visible.push(id);
+        var d = Math.pow((b.left + b.right) / 2 - cx, 2) + Math.pow((b.top + b.bottom) / 2 - cy, 2);
+        if (d < bestD) { bestD = d; best = id; }
+      }
+      post({ op: "view", zoom: Math.round(view.scale * 1000) / 1000, center_element: best, visible_elements: visible.slice(0, 60) });
+    }, 400);
   }
 
   function fit() {
@@ -509,6 +535,7 @@
     }
     if (spotlight.pending) applySpotlight();
     else restoreSpotlight();
+    if (agentView.pending) applyView();
   }
 
   function showError(err) {
@@ -775,6 +802,44 @@
     applyTransform();
   }
 
+  // set_zoom / center_on_element: { zoom?, fit?, center_on? }
+  var agentView = { pending: null, last: null };
+
+  function applyView() {
+    var v = agentView.pending;
+    if (!v || !view.svg) return;
+    agentView.pending = null;
+    agentView.last = v;
+    if (v.fit) fit();
+    if (v.zoom) zoom(v.zoom / view.scale);
+    if (v.center) {
+      var el = view.svg.querySelector('[data-id="' + CSS.escape(v.center) + '"]');
+      if (el) {
+        centerOn(el);
+        el.classList.remove("odg-pulse");
+        void el.getBoundingClientRect(); // restart the animation
+        el.classList.add("odg-pulse");
+        setTimeout(function () { el.classList.remove("odg-pulse"); }, 2600);
+      }
+    }
+    applyTransform();
+  }
+
+  /** Pans (no zoom change) so the element sits in the middle of the free part of the preview. */
+  function centerOn(el) {
+    var vp = viewport.getBoundingClientRect();
+    var width = vp.width;
+    var cards = document.getElementById("agent-cards");
+    if (cards && cards.children.length) {
+      var free = cards.getBoundingClientRect().left - 12 - vp.left;
+      if (free > 220) width = free;
+    }
+    var b = el.getBoundingClientRect();
+    view.x += vp.left + width / 2 - (b.left + b.right) / 2;
+    view.y += vp.top + vp.height / 2 - (b.top + b.bottom) / 2;
+    applyTransform();
+  }
+
   function agentCards() {
     var box = document.getElementById("agent-cards");
     if (!box) {
@@ -802,6 +867,12 @@
   function agentMessage(m, switched) {
     if (!m || (m.id && shownMessages[m.id])) return;
     if (m.id) shownMessages[m.id] = true;
+    if (m.kind === "view") {
+      if (m.text) addCard(m);
+      agentView.pending = { zoom: m.zoom, fit: m.fit, center: m.center_on, at: Date.now() };
+      if (!switched) applyView();
+      return;
+    }
     var ids = m.element_ids || [];
     // card first, so the spotlight can centre the elements in the space the cards leave free
     if (m.text) addCard(m);
@@ -909,6 +980,11 @@
       fit();
       // hosts fit a freshly opened diagram after it renders: keep the agent's elements in view
       if (spotlight.active && spotlight.els.length && spotlight.els[0].isConnected) focusOn(spotlight.els);
+      // an agent's zoom / centre from a moment ago wins over the host's automatic fit
+      if (agentView.last && Date.now() - agentView.last.at < 4000) {
+        agentView.pending = agentView.last;
+        applyView();
+      }
       return;
     }
     if (op === "zoom") return zoom(msg.factor || 1.25);

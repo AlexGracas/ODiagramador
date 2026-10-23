@@ -57,6 +57,7 @@ final class AppState: ObservableObject {
     /// Read position in the agents' message log (nil = viewer just opened on this folder).
     private var inboxCursor: UInt64?
     private var presenceAt = Date.distantPast
+    private var viewState: (zoom: Double?, center: String?, visible: [String]) = (nil, nil, [])
     private var lastModified: [String: String] = [:]
     private var fitNext = true
     private var lastSvg: String?
@@ -74,6 +75,10 @@ final class AppState: ObservableObject {
         viewer.onConstruct = { [weak self] args in self?.applyConstruct(args) }
         viewer.onEdit = { [weak self] args in self?.applyEdit(args) }
         viewer.onAnswer = { [weak self] id, text in self?.answerAgent(id, text) }
+        viewer.onView = { [weak self] zoom, center, visible in
+            self?.viewState = (zoom, center, visible)
+            self?.presenceAt = .distantPast // tell agents on the next poll
+        }
         viewer.onReady = { [weak self] in
             guard let self else { return }
             self.viewer.send(["op": "strings", "strings": self.strings])
@@ -230,6 +235,9 @@ final class AppState: ObservableObject {
                                     "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""]
             if let s = selectedPath { p["path"] = s }
             if let e = selectedElement { p["element_id"] = e }
+            if let z = viewState.zoom { p["zoom"] = z }
+            if let c = viewState.center { p["center_element"] = c }
+            p["visible_elements"] = viewState.visible
             try? Core.run("set_presence", p)
         }
         var args: [String: Any] = ["workspace": ws.path]
@@ -245,7 +253,7 @@ final class AppState: ObservableObject {
         let kind = m["kind"] as? String ?? ""
         let ids = m["element_ids"] as? [String] ?? []
         var switched = false
-        if let p = m["path"] as? String, kind == "show" || kind == "highlight" || !ids.isEmpty, p != selectedPath {
+        if let p = m["path"] as? String, ["show", "highlight", "view"].contains(kind) || !ids.isEmpty, p != selectedPath {
             if !diagrams.contains(where: { $0.path == p }) { refreshList() }
             if diagrams.contains(where: { $0.path == p }) {
                 select(p)

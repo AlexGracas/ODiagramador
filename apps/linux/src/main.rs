@@ -65,6 +65,10 @@ struct State {
     /// Read position in the agents' message log (None = viewer just opened on this folder).
     inbox_cursor: Option<u64>,
     presence_at: i64,
+    /// What the human sees (from the viewer): zoom, element in the centre, elements on screen.
+    view_zoom: Option<f64>,
+    view_center: Option<String>,
+    view_visible: Vec<String>,
 }
 
 impl State {
@@ -152,6 +156,9 @@ fn build_ui(app: &adw::Application, args: &[String]) {
         update: None,
         inbox_cursor: None,
         presence_at: 0,
+        view_zoom: None,
+        view_center: None,
+        view_visible: vec![],
     }));
 
     // ---- header
@@ -523,6 +530,13 @@ fn on_viewer_message(ui: &Ui, msg: Value) {
             let id = msg["id"].as_u64().unwrap_or(0);
             render_finished(ui, id, msg["result"].clone());
         }
+        "view" => {
+            let mut s = ui.state.borrow_mut();
+            s.view_zoom = msg["zoom"].as_f64();
+            s.view_center = msg["center_element"].as_str().map(str::to_string);
+            s.view_visible = msg["visible_elements"].as_array().map(|v| v.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+            s.presence_at = 0; // tell agents on the next poll
+        }
         "answer" => {
             let (Some(id), Some(text)) = (msg["question_id"].as_str(), msg["text"].as_str()) else { return };
             if let Some(ws) = &ui.state.borrow().ws {
@@ -739,6 +753,9 @@ fn sync_agents(ui: &Ui) {
                 updated: 0,
                 path: s.selected.clone(),
                 element_id: s.selected_element.clone(),
+                zoom: s.view_zoom,
+                center_element: s.view_center.clone(),
+                visible_elements: s.view_visible.clone(),
             });
         }
         let Ok(inbox) = ws.viewer_inbox(s.inbox_cursor) else { return };
@@ -756,7 +773,7 @@ fn sync_agents(ui: &Ui) {
 fn deliver_agent_message(ui: &Ui, m: &odg_core::channel::Message) {
     let mut switched = false;
     if let Some(path) = &m.path {
-        let wants_switch = m.kind == "show" || m.kind == "highlight" || !m.element_ids.is_empty();
+        let wants_switch = matches!(m.kind.as_str(), "show" | "highlight" | "view") || !m.element_ids.is_empty();
         let current = ui.state.borrow().selected.clone();
         if wants_switch && current.as_deref() != Some(path.as_str()) {
             if !ui.state.borrow().diagrams.iter().any(|d| &d.path == path) {

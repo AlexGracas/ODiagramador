@@ -35,6 +35,10 @@ public partial class MainWindow : Window
     /// <summary>Read position in the agents' message log (null = viewer just opened on this folder).</summary>
     private ulong? _inboxCursor;
     private DateTime _presenceAt = DateTime.MinValue;
+    /// <summary>What the human sees (from the viewer): zoom, element in the centre, elements on screen.</summary>
+    private double? _viewZoom;
+    private string? _viewCenter;
+    private JsonArray _viewVisible = new();
     private readonly DispatcherTimer _renderDebounce = new() { Interval = TimeSpan.FromMilliseconds(300) };
     private readonly DispatcherTimer _saveDebounce = new() { Interval = TimeSpan.FromMilliseconds(900) };
     private readonly LineTint _tint = new();
@@ -431,6 +435,12 @@ public partial class MainWindow : Window
             case "result":
                 RenderFinished(msg["id"]?.GetValue<int>() ?? 0, msg["result"]?.AsObject());
                 break;
+            case "view":
+                _viewZoom = msg["zoom"]?.GetValue<double>();
+                _viewCenter = msg["center_element"]?.GetValue<string>();
+                _viewVisible = msg["visible_elements"]?.AsArray().DeepClone().AsArray() ?? new JsonArray();
+                _presenceAt = DateTime.MinValue; // tell agents on the next poll
+                break;
             case "answer":
                 AnswerAgent(msg["question_id"]?.GetValue<string>(), msg["text"]?.GetValue<string>());
                 break;
@@ -636,10 +646,11 @@ public partial class MainWindow : Window
             if (DateTime.UtcNow - _presenceAt >= TimeSpan.FromSeconds(2))
             {
                 _presenceAt = DateTime.UtcNow;
-                Core.Run("set_presence", new
+                Core.CallNode<JsonNode?>("set_presence", new JsonObject
                 {
-                    workspace = _workspace, app = "ODiagramador", platform = "windows", version = Updater.CurrentVersion,
-                    path = _selected, element_id = _selectedElement,
+                    ["workspace"] = _workspace, ["app"] = "ODiagramador", ["platform"] = "windows", ["version"] = Updater.CurrentVersion,
+                    ["path"] = _selected, ["element_id"] = _selectedElement,
+                    ["zoom"] = _viewZoom, ["center_element"] = _viewCenter, ["visible_elements"] = _viewVisible.DeepClone(),
                 });
             }
             var inbox = Core.Call<JsonNode>("viewer_inbox", new { workspace = _workspace, cursor = _inboxCursor });
@@ -662,7 +673,7 @@ public partial class MainWindow : Window
         var path = m["path"]?.GetValue<string>();
         App.Log($"agent message: {kind} {path} {m["id"]}");
         var switched = false;
-        if (path is not null && (kind is "show" or "highlight" || hasIds) && path != _selected)
+        if (path is not null && (kind is "show" or "highlight" or "view" || hasIds) && path != _selected)
         {
             if ((DiagramList.ItemsSource as List<DiagramInfo>)?.All(d => d.Path != path) ?? true) RefreshList();
             if ((DiagramList.ItemsSource as List<DiagramInfo>)?.FirstOrDefault(d => d.Path == path) is { } item)
