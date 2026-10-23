@@ -93,9 +93,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ls -la assets
+          # only the packages: artifacts may carry extra folders
+          mapfile -t files < <(find assets -type f -name '*.zip' | sort)
+          printf '%s\n' "${files[@]}"
+          [ "${#files[@]}" -eq 2 ] || { echo "expected 2 packages"; exit 1; }
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" assets/* --clobber
+            gh release upload "$TAG" "${files[@]}" --clobber
           else
-            gh release create "$TAG" assets/* --title "ODiagramador $TAG" --notes-file .github/release-notes.md
+            gh release create "$TAG" "${files[@]}" --title "ODiagramador $TAG" --notes-file .github/release-notes.md
           fi
