@@ -9,7 +9,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 authors = ["ODiagramador contributors"]
-repository = "https://github.com/odiagramador/odiagramador"
+repository = "https://github.com/AlexGracas/ODiagramador"
 
 [workspace.dependencies]
 odg-core = { path = "crates/odg-core" }

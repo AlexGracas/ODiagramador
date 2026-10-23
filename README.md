@@ -11,6 +11,14 @@
 - 🧩 **Construtores**: ao criar um diagrama você escolhe o tipo (fluxograma, sequência, classes, estados, ER) e a prévia ganha uma paleta com os elementos daquele tipo (nó, decisão, ligação, grupo, participante, mensagem, bloco alt/loop, classe, relação, estado, transição, entidade…) e a **direção** (TB/BT/LR/RL). O texto Mermaid é gerado pelo núcleo e aparece no editor. **Clicar num elemento** abre o inspetor para renomear, trocar a forma ou excluir (as ligações do elemento saem junto; os vizinhos ficam); clicar numa ligação permite editar o texto ou excluí-la.
 - ✋ **Correção de layout** em fluxogramas, estados, classes, ER e requisitos: ELK automático, **arrastar nós** (ELK interativo, o arraste vira dica) ou **posições exatas**. As posições ficam em comentários `%% @odg`, e o arquivo continua Mermaid válido em qualquer outro lugar ([docs/syntax/layout.md](docs/syntax/layout.md)).
 
+## Download
+
+Baixe a versão mais recente em **[Releases](https://github.com/AlexGracas/ODiagramador/releases/latest)**:
+- macOS 13+ (Apple Silicon e Intel): `ODiagramador-…-macos-universal.zip`
+- Windows 10/11 x64: `ODiagramador-…-windows-x64.zip`
+
+As instruções de instalação estão nas notas do release (os apps ainda não são assinados com certificado de desenvolvedor).
+
 ## Arquitetura / Architecture
 
 ```
@@ -50,7 +58,7 @@ scripts/build-render-kit.sh
 Apps:
 
 ```bash
-apps/macos/build-app.sh            # → dist/ODiagramador.app
+apps/macos/build-app.sh            # → dist/ODiagramador.app (UNIVERSAL=1 ZIP=1 para o pacote de release)
 ```
 
 ```bash
@@ -77,7 +85,7 @@ Guia completo para agentes: [docs/AGENTS.md](docs/AGENTS.md) · Roteiro UML: [do
 | Render headless + CLI + MCP | testado no macOS (ponta a ponta via stdio) |
 | App macOS | testado manualmente (edição, prévia, problemas, comentários, atualização ao vivo vinda do agente) |
 | App Linux | compila (type-check); execução a validar em Linux |
-| App Windows | compila; execução a validar em Windows |
+| App Windows | compila; inicialização testada em CI (release); uso real a validar em Windows |
 | Layout (ELK, arrastar, posições exatas) | protótipo testado no macOS e via MCP; roteamento das arestas no modo exato/arrastado é simples (não desvia de nós) |
 | UML | pontos de extensão prontos; engine planejada em [docs/UML.md](docs/UML.md) |
 
