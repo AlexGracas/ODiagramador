@@ -231,7 +231,7 @@ public sealed class SettingsWindow : Window
             content.Children.Add(BrandIcons.ForClient(id));
             content.Children.Add(new TextBlock { Text = name, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
             var button = new Button { Content = content, Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 6, 6) };
-            button.Click += (_, _) => _main.CopyMcp(id, remote);
+            button.Click += (_, _) => _main.CopyMcp(id, remote, this);
             wrap.Children.Add(button);
         }
         return wrap;

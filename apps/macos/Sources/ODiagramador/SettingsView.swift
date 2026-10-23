@@ -18,6 +18,19 @@ struct SettingsView: View {
         }
         .padding(20)
         .frame(width: 720)
+        // confirmations (e.g. "MCP config copied") here too: the main window's toast is behind this window
+        .overlay(alignment: .bottom) {
+            if let toast = state.toast {
+                Label(toast, systemImage: "checkmark.circle.fill")
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.regularMaterial, in: Capsule())
+                    .shadow(radius: 4)
+                    .padding(.bottom, 12)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: state.toast)
     }
 }
 

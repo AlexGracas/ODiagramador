@@ -451,7 +451,7 @@ final class AppState: ObservableObject {
     /// Copies the MCP configuration for `client` (local stdio, or the remote HTTP server when `remoteURL`).
     func copyMcpConfig(_ client: String, remote remoteURL: Bool = false) {
         guard let ws = workspace else {
-            errorMessage = t("ui-no-workspace")
+            showToast(t("ui-no-workspace"))
             return
         }
         var args: [String: Any] = ["odg_path": odgPath, "workspace": ws.path]

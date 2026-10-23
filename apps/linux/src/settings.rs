@@ -199,7 +199,7 @@ pub fn show_preferences(ui: &Ui, page: &str) {
     // ---- MCP
     let mcp = adw::PreferencesPage::builder().title(t("ui-settings-mcp")).icon_name("network-server-symbolic").name("mcp").build();
     let local = adw::PreferencesGroup::builder().title(t("ui-mcp-local")).description(t("ui-mcp-local-hint")).build();
-    add_client_rows(ui, &local, false, lang);
+    add_client_rows(ui, &window, &local, false, lang);
     mcp.add(&local);
 
     let remote = adw::PreferencesGroup::builder().title(t("ui-mcp-remote")).description(format!("⚠ {}", t("ui-mcp-remote-warning"))).build();
@@ -253,7 +253,7 @@ pub fn show_preferences(ui: &Ui, page: &str) {
     mcp.add(&remote);
 
     let copy_remote = adw::PreferencesGroup::builder().title(t("ui-mcp-copy-remote")).build();
-    add_client_rows(ui, &copy_remote, true, lang);
+    add_client_rows(ui, &window, &copy_remote, true, lang);
     mcp.add(&copy_remote);
     window.add(&mcp);
 
@@ -282,15 +282,21 @@ pub fn show_preferences(ui: &Ui, page: &str) {
     window.present();
 }
 
-fn add_client_rows(ui: &Ui, group: &adw::PreferencesGroup, remote: bool, lang: Lang) {
+fn add_client_rows(ui: &Ui, window: &adw::PreferencesWindow, group: &adw::PreferencesGroup, remote: bool, lang: Lang) {
     let other = i18n::t(lang, "ui-mcp-other", &[]);
     let clients = MCP_CLIENTS.iter().map(|(id, name)| (*id, name.to_string())).chain(std::iter::once(("json", other)));
     for (id, name) in clients {
         let row = adw::ActionRow::builder().title(&name).activatable(true).build();
         row.add_prefix(&client_icon(id));
         row.add_suffix(&gtk::Image::from_icon_name("edit-copy-symbolic"));
-        let u = ui.clone();
-        row.connect_activated(move |_| copy_mcp_config(&u, id, remote));
+        let (u, w) = (ui.clone(), window.downgrade());
+        // confirmation inside the preferences window (the main window's toast would be hidden behind it)
+        row.connect_activated(move |_| {
+            let msg = copy_mcp_config(&u, id, remote);
+            if let Some(w) = w.upgrade() {
+                w.add_toast(adw::Toast::new(&msg));
+            }
+        });
         group.add(&row);
     }
 }

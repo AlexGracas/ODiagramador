@@ -131,6 +131,7 @@ public partial class MainWindow : Window
     private void OnOpenMenu(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { ContextMenu: { } menu } button) return;
+        App.Log($"open menu {button.Name} ({menu.Items.Count} items)");
         menu.PlacementTarget = button;
         menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
         menu.IsOpen = true;
@@ -155,12 +156,21 @@ public partial class MainWindow : Window
         McpMenu.Items.Add(settings);
     }
 
-    /// <summary>Copies the MCP configuration for a client; falls back to a dialog when the clipboard is busy.</summary>
-    internal void CopyMcp(string client, bool remote)
+    /// <summary>
+    /// Copies the MCP configuration for a client and always shows it in a dialog (over the window that was clicked)
+    /// with the next step for that client, so the result is visible even when the clipboard fails.
+    /// </summary>
+    internal void CopyMcp(string client, bool remote, Window? owner = null)
     {
+        owner ??= this;
+        App.Log($"copy MCP config: client={client} remote={remote} workspace={_workspace ?? "(none)"}");
         if (_workspace is null)
         {
-            ShowToast(T("ui-no-workspace"));
+            if (MessageBox.Show(owner, T("ui-mcp-need-folder"), "MCP", MessageBoxButton.OKCancel, MessageBoxImage.Information) == MessageBoxResult.OK)
+            {
+                OnOpenFolder(this, new RoutedEventArgs());
+                if (_workspace is not null) CopyMcp(client, remote, owner);
+            }
             return;
         }
         string text;
@@ -185,17 +195,25 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "ODiagramador", MessageBoxButton.OK, MessageBoxImage.Error);
+            App.Log("mcp_config failed: " + ex);
+            MessageBox.Show(owner, ex.Message, "ODiagramador", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
         var name = McpClients.FirstOrDefault(c => c.Id == client).Name ?? T("ui-mcp-other");
-        if (TrySetClipboard(text)) ShowToast(T("ui-mcp-copied", new { app = name }));
-        else Prompt.ShowText(this, "MCP", T("ui-mcp-copy-failed"), text);
+        var copied = TrySetClipboard(text);
+        var howto = T(client switch
+        {
+            "claude-code" or "codex" or "cursor" or "claude-desktop" => "ui-mcp-howto-" + client,
+            _ => "ui-mcp-howto-json",
+        });
+        Prompt.McpConfig(owner, name, copied ? "✓  " + T("ui-mcp-copied", new { app = name }) : T("ui-mcp-copy-failed"),
+            T("ui-mcp-next-step") + " " + howto, text, T("ui-mcp-copy-again"), () => TrySetClipboard(text));
     }
 
     /// <summary>The Windows clipboard is often locked briefly by other apps: retry instead of failing.</summary>
     private static bool TrySetClipboard(string text)
     {
+        Exception? last = null;
         for (var i = 0; i < 10; i++)
         {
             try
@@ -203,11 +221,13 @@ public partial class MainWindow : Window
                 Clipboard.SetDataObject(text, true);
                 return true;
             }
-            catch (System.Runtime.InteropServices.ExternalException)
+            catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or InvalidOperationException)
             {
+                last = ex;
                 Thread.Sleep(60);
             }
         }
+        App.Log("clipboard failed: " + last);
         return false;
     }
 
@@ -850,5 +870,34 @@ internal static class Prompt
         pageButton.Click += (_, _) => { choice = "page"; win.Close(); };
         win.ShowDialog();
         return choice;
+    }
+
+    /// <summary>Result of "copy MCP config": status, next step for that client and the text itself (selectable).</summary>
+    public static void McpConfig(Window owner, string title, string status, string howto, string text, string copyAgain, Func<bool> copy)
+    {
+        var box = new TextBox
+        {
+            Text = text, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            Width = 560, MaxHeight = 280, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 8, 0, 10),
+        };
+        var again = new Button { Content = copyAgain, Padding = new Thickness(12, 2, 12, 2), Margin = new Thickness(0, 0, 6, 0) };
+        var close = new Button { Content = "OK", IsDefault = true, IsCancel = true, Padding = new Thickness(12, 2, 12, 2) };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        buttons.Children.Add(again);
+        buttons.Children.Add(close);
+        var statusText = new TextBlock { Text = status, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, MaxWidth = 560 };
+        var panel = new StackPanel { Margin = new Thickness(14) };
+        panel.Children.Add(statusText);
+        panel.Children.Add(new TextBlock { Text = howto, TextWrapping = TextWrapping.Wrap, MaxWidth = 560, Margin = new Thickness(0, 6, 0, 0) });
+        panel.Children.Add(box);
+        panel.Children.Add(buttons);
+        var win = Dialog(owner, "MCP · " + title, panel);
+        again.Click += (_, _) =>
+        {
+            box.Focus();
+            box.SelectAll();
+            if (copy()) statusText.Text = "✓  " + status.TrimStart('✓', ' ');
+        };
+        win.ShowDialog();
     }
 }

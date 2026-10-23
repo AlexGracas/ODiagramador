@@ -343,7 +343,10 @@ fn apply_strings(ui: &Ui) {
     for (id, name) in MCP_CLIENTS.iter().copied().chain(std::iter::once(("json", ""))) {
         let u = ui.clone();
         let label = if id == "json" { s.t("ui-mcp-other") } else { name.to_string() };
-        mcp.push(MenuEntry::new(client_icon(id), label, move || copy_mcp_config(&u, id, false)));
+        mcp.push(MenuEntry::new(client_icon(id), label, move || {
+            let msg = copy_mcp_config(&u, id, false);
+            u.toast.add_toast(adw::Toast::new(&msg));
+        }));
     }
     mcp.push(MenuEntry::separator());
     let u = ui.clone();
@@ -980,12 +983,10 @@ fn export(ui: &Ui, png: bool) {
     });
 }
 
-pub(crate) fn copy_mcp_config(ui: &Ui, client: &str, remote: bool) {
+/// Copies the config for `client` and returns the confirmation for the caller to show where the user clicked.
+pub(crate) fn copy_mcp_config(ui: &Ui, client: &str, remote: bool) -> String {
     let s = ui.state.borrow();
-    let Some(ws) = &s.ws else {
-        ui.toast.add_toast(adw::Toast::new(&s.t("ui-no-workspace")));
-        return;
-    };
+    let Some(ws) = &s.ws else { return s.t("ui-mcp-need-folder").split(':').next().unwrap_or_default().to_string() };
     let w = ws.root().to_string_lossy().to_string();
     let url = remote.then(|| RemoteMcp::url(&s.prefs));
     let token = remote.then_some(s.prefs.mcp_token.as_str());
@@ -995,16 +996,9 @@ pub(crate) fn copy_mcp_config(ui: &Ui, client: &str, remote: bool) {
     match gdk::Display::default() {
         Some(display) => {
             display.clipboard().set_text(&text);
-            ui.toast.add_toast(adw::Toast::new(&i18n::t(s.lang, "ui-mcp-copied", &[("app", name.as_str().into())])));
+            i18n::t(s.lang, "ui-mcp-copied", &[("app", name.as_str().into())])
         }
-        None => {
-            let dialog = adw::MessageDialog::new(Some(&ui.window), Some("MCP"), Some(&s.t("ui-mcp-copy-failed")));
-            let view = gtk::TextView::builder().editable(false).monospace(true).wrap_mode(gtk::WrapMode::WordChar).build();
-            view.buffer().set_text(&text);
-            dialog.set_extra_child(Some(&view));
-            dialog.add_response("ok", "OK");
-            dialog.present();
-        }
+        None => s.t("ui-mcp-copy-failed"),
     }
 }
 

@@ -13,9 +13,35 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         Args = e.Args;
+        Log($"start {Updater.CurrentVersion} on {Environment.OSVersion}");
+        DispatcherUnhandledException += (_, ex) =>
+        {
+            Log("unhandled: " + ex.Exception);
+            MessageBox.Show(ex.Exception.Message + "\n\n" + LogPath, "ODiagramador", MessageBoxButton.OK, MessageBoxImage.Error);
+            ex.Handled = true;
+        };
         ApplyTheme(Prefs);
         RegisterUrlScheme();
         base.OnStartup(e);
+    }
+
+    /// <summary>Diagnostics for problems we cannot reproduce: %LocalAppData%\ODiagramador\odiagramador.log</summary>
+    public static readonly string LogPath = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ODiagramador", "odiagramador.log");
+
+    public static void Log(string line)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(LogPath)!);
+            var info = new System.IO.FileInfo(LogPath);
+            if (info.Exists && info.Length > 512 * 1024) info.Delete();
+            System.IO.File.AppendAllText(LogPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {line}{Environment.NewLine}");
+        }
+        catch
+        {
+            // logging must never break the app
+        }
     }
 
     /// <summary>Fluent theme (light/dark/system) on .NET 9+; the classic theme otherwise.</summary>
