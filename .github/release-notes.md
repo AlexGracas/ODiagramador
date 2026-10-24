@@ -28,6 +28,13 @@ claude mcp add odiagramador -- /Applications/ODiagramador.app/Contents/MacOS/odg
 
 No Windows o caminho é `...\ODiagramador\odg.exe`. Guia completo: [docs/AGENTS.md](https://github.com/AlexGracas/ODiagramador/blob/main/docs/AGENTS.md).
 
+## Novidades da 0.5.0
+- **Todos os tipos de diagrama do Mermaid** (33): o motor passou para o **Mermaid 12.2** com o plugin **ZenUML**. Além dos de antes: casos de uso, requisitos, C4, arquitetura, blocos, raias, ZenUML, Gantt, linha do tempo, jornada, Kanban, Git, mapa mental, árvore, Ishikawa, event modeling, fluxo de agentes, railroad, pacote, pizza, XY, quadrantes, radar, Sankey, treemap, Venn, Wardley e Cynefin.
+- **Novo diagrama** lista todos os tipos, cada um começando pelo exemplo oficial.
+- **ELK só onde se aplica**: fluxogramas e diagramas de estados, classes, ER e requisitos continuam com ELK, arrastar e posições exatas; os demais tipos usam o layout do próprio Mermaid (o painel de problemas avisa se houver `%% @odg layout` neles).
+- Agentes: `get_syntax_help` tem a sintaxe de todos os tipos, offline (resumo da documentação oficial do Mermaid).
+- macOS/Linux: diagramas Event Modeling voltaram a renderizar, e diagramas com textos HTML agora geram PNG (os textos aparecem como texto simples).
+
 ## Novidades da 0.4.0
 - **O agente controla a sua visualização** (novas ferramentas MCP):
   - `open_diagram` troca o diagrama aberto no app;
