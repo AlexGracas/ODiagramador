@@ -1574,7 +1574,7 @@ dependencies = [
 
 [[package]]
 name = "odg-cli"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "base64 0.22.1",
  "clap",
@@ -1587,7 +1587,7 @@ dependencies = [
 
 [[package]]
 name = "odg-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "base64 0.22.1",
  "fluent-bundle",
@@ -1605,7 +1605,7 @@ dependencies = [
 
 [[package]]
 name = "odg-ffi"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "base64 0.22.1",
  "odg-core",
@@ -1616,7 +1616,7 @@ dependencies = [
 
 [[package]]
 name = "odg-render"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "base64 0.22.1",
  "odg-core",

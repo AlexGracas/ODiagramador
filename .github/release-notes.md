@@ -28,6 +28,15 @@ claude mcp add odiagramador -- /Applications/ODiagramador.app/Contents/MacOS/odg
 
 No Windows o caminho é `...\ODiagramador\odg.exe`. Guia completo: [docs/AGENTS.md](https://github.com/AlexGracas/ODiagramador/blob/main/docs/AGENTS.md).
 
+## Novidades da 0.6.0
+- **Validação de diagramas de arquitetura**: diagramas de blocos (`block`) agora são analisados (blocos e setas), e há novos avisos para todos os diagramas com setas: seta passando por cima de outro elemento, seta curta demais para a ponta (aparece invertida), rótulo por cima de caixas ou de outro rótulo, e **cruzamentos de setas** (com a contagem no relatório, para comparar versões).
+- **Ordem das camadas no ELK**: `arrange_diagram` aceita camadas numeradas (`layers: [{id, layer: 0}, …]`, também para subgrafos), mantendo a ordem mesmo com setas que voltam.
+- Setas ligadas a um subgrafo contam como conexão dos nós de dentro (sem falso "não conectado").
+- `render_diagram` com `focus` (elemento ou subgrafo) ou `region` mostra só aquela parte, legível, em diagramas grandes.
+- **Uma janela só**: quando o agente de outro projeto pede para mostrar um diagrama, a janela aberta troca para aquele projeto em vez de abrir outra (Windows e Linux).
+- **macOS**: o app e o `odg` voltam a rodar como Apple Silicon quando iniciados por um programa Intel (sem o aviso de incompatibilidade com versões futuras do macOS).
+- Windows: "Novo diagrama" usa o exemplo certo de cada tipo.
+
 ## Novidades da 0.5.0
 - **Todos os tipos de diagrama do Mermaid** (33): o motor passou para o **Mermaid 12.2** com o plugin **ZenUML**. Além dos de antes: casos de uso, requisitos, C4, arquitetura, blocos, raias, ZenUML, Gantt, linha do tempo, jornada, Kanban, Git, mapa mental, árvore, Ishikawa, event modeling, fluxo de agentes, railroad, pacote, pizza, XY, quadrantes, radar, Sankey, treemap, Venn, Wardley e Cynefin.
 - **Novo diagrama** lista todos os tipos, cada um começando pelo exemplo oficial.
