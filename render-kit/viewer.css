@@ -79,7 +79,11 @@ html, body {
   cursor: pointer;
 }
 .pal-btn:hover { border-color: var(--info); }
-.pal-icon { font-size: 14px; opacity: 0.85; }
+.pal-icon { font-size: 14px; opacity: 0.85; display: inline-flex; align-items: center; }
+.pal-icon svg { display: block; }
+.pal-btn.compact { padding-left: 6px; padding-right: 6px; }
+.ctor-title .pal-icon { vertical-align: middle; }
+#ctor-form > .ctor-hint { margin: -2px 0 8px; max-width: 300px; }
 .pal-dir { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); white-space: nowrap; }
 .pal-dir select, .ctor-row select, .ctor-row input, .ctor-row textarea {
   border: 1px solid var(--border);

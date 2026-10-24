@@ -566,7 +566,7 @@
     var svgText;
     try {
       var res = await mermaid.render(id, source);
-      svgText = res.svg;
+      svgText = fixClassMarkers(res.svg);
     } catch (e) {
       out.render_error = normalizeError(e, "render");
       cleanupTemp(id);
@@ -614,6 +614,13 @@
     else host.innerHTML = "";
     out.duration_ms = Math.round(performance.now() - t0);
     return out;
+  }
+
+  // Mermaid 12's default "neo" look gives class-diagram relations its small "-margin" heads (8px) but still
+  // shortens the line for the full-size ones (17px), so triangles and diamonds float ~9px off the class box.
+  // The full-size markers are in the same SVG: use them (classic geometry, the head touches the box).
+  function fixClassMarkers(svgText) {
+    return svgText.replace(/(_classDiagram-(?:extension|aggregation|composition|dependency|lollipop)(?:Start|End))-margin\)/g, "$1)");
   }
 
   function cleanupTemp(id) {

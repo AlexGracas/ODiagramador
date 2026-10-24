@@ -410,11 +410,28 @@ pub fn apply(src: &str, construct: &str, params: &Value) -> Result<String, Strin
                 "dependency" => "..>",
                 "realization" => "..|>",
                 "link" => "--",
+                // provided interface (UML "ball"): `Class --() Interface`, no ends or label
+                "lollipop" => return add(vec![format!("{from} --() {}", type_name("", to, false, "Interface"))]),
                 _ => "-->",
             };
             let card = |k| p(params, k).map(|c| format!(" \"{c}\"")).unwrap_or_default();
             let label = p(params, "label").map(|l| format!(" : {}", free_text(l))).unwrap_or_default();
             add(vec![format!("{from}{} {arrow}{} {to}{label}", card("from_card"), card("to_card"))])
+        }
+        // UML package: Mermaid's `namespace`, with existing classes moved in by name and/or new ones
+        "class.namespace" => {
+            let label = req(params, "name")?;
+            let name = type_name(src, label, false, "Package");
+            let mut classes: Vec<String> = list(params, "members");
+            classes.extend(list(params, "classes").into_iter().map(|c| type_name(src, &c, false, "Class")));
+            if classes.is_empty() {
+                return Err("a package needs at least one class (pick existing ones or type new names)".into());
+            }
+            let head = if name == label { format!("namespace {name} {{") } else { format!("namespace {name}[\"{}\"] {{", free_text(label).replace('"', "'")) };
+            let mut out = vec![head];
+            out.extend(classes.into_iter().map(|c| format!("{ind}class {c}")));
+            out.push("}".into());
+            add(out)
         }
         "class.note" => {
             let text = free_text(req(params, "text")?).replace('"', "'");
@@ -538,6 +555,11 @@ mod tests {
         let s = apply("classDiagram\n  class A\n", "class.class", &json!({"name": "order item", "attributes": "+int qty\n+Money price", "methods": ["total"]})).unwrap();
         assert!(s.contains("  class OrderItem {\n    +int qty\n    +Money price\n    total()\n  }\n"));
         let s = apply("classDiagram\n  class A\n", "class.relation", &json!({"from": "A", "to": "B", "type": "composition", "from_card": "1", "to_card": "*", "label": "has"})).unwrap();
+        let lolli = apply("classDiagram\n  class A\n", "class.relation", &json!({"from": "A", "to": "Printable", "type": "lollipop"})).unwrap();
+        assert!(lolli.contains("  A --() Printable"), "{lolli}");
+        let pkg = apply("classDiagram\n  class A\n", "class.namespace", &json!({"name": "Domínio de vendas", "members": ["A"], "classes": "Invoice"})).unwrap();
+        assert!(pkg.contains("  namespace DominioDeVendas[\"Domínio de vendas\"] {\n    class A\n    class Invoice\n  }"), "{pkg}");
+        assert!(apply("classDiagram\n  class A\n", "class.namespace", &json!({"name": "Empty"})).is_err());
         assert!(s.contains("  A \"1\" *-- \"*\" B : has\n"));
         let s = apply("classDiagram\n  class A\n", "direction", &json!({"dir": "LR"})).unwrap();
         assert!(s.starts_with("classDiagram\n  direction LR\n"));

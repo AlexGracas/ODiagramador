@@ -35,7 +35,46 @@
     "ui-m-connect": "Connect to", "ui-m-properties": "Properties…", "ui-m-connections": "connections",
     "ui-m-add-attribute": "Add attribute…", "ui-m-add-operation": "Add operation…",
     "ui-m-attribute-example": "+String name", "ui-m-operation-example": "+total(): Money",
-    "ui-m-member-hint": "Visibility: + public · - private · # protected · ~ package. Enter adds, Esc cancels.",
+    "ui-m-member-hint": "Visibility: + public · - private · # protected · ~ package. End with $ for static, * for abstract. Enter adds, Esc cancels.",
+    "ui-c-abstract": "Abstract class",
+    "ui-c-interface": "Interface",
+    "ui-c-enum": "Enumeration",
+    "ui-c-package": "Package",
+    "ui-c-rel-link": "Association",
+    "ui-c-rel-association": "Directed association (navigable)",
+    "ui-c-rel-inheritance": "Generalization (inheritance)",
+    "ui-c-rel-realization": "Realization (implements an interface)",
+    "ui-c-rel-dependency": "Dependency",
+    "ui-c-rel-aggregation": "Aggregation",
+    "ui-c-rel-composition": "Composition",
+    "ui-c-rel-lollipop": "Provided interface (ball)",
+    "ui-f-general": "General class (parent)",
+    "ui-f-specific": "Specific class (child)",
+    "ui-f-implementer": "Class that implements",
+    "ui-f-interface": "Interface",
+    "ui-f-client": "Class that depends (client)",
+    "ui-f-supplier": "Class it uses (supplier)",
+    "ui-f-whole": "Whole",
+    "ui-f-part": "Part",
+    "ui-f-provider": "Class that provides it",
+    "ui-f-iface-name": "Interface name",
+    "ui-f-navigable-to": "To (navigable end)",
+    "ui-f-literals": "Literals (one per line)",
+    "ui-f-operations": "Operations",
+    "ui-f-classes-in": "Existing classes",
+    "ui-f-classes-new": "New classes (one per line)",
+    "ui-h-abstract": "A class that cannot be instantiated; it exists to be specialized. Mark abstract operations with * at the end: +area() double*",
+    "ui-h-interface": "A contract: only operations, no state. Classes realize it (dashed line with a hollow triangle).",
+    "ui-h-enum": "A type with a fixed list of values (literals), e.g. order status.",
+    "ui-h-package": "Groups related classes under a name (UML package; Mermaid draws it as a namespace).",
+    "ui-h-link": "Plain solid line: the two classes are related. Multiplicities say how many on each side (1, 0..1, *, 1..*).",
+    "ui-h-association": "Solid line with an open arrow: from the first class you can reach the second (navigability).",
+    "ui-h-inheritance": "Solid line with a hollow triangle pointing at the general class: the child inherits its attributes and operations (\"is a\").",
+    "ui-h-realization": "Dashed line with a hollow triangle pointing at the interface: the class implements its operations.",
+    "ui-h-dependency": "Dashed line with an open arrow: the client uses the supplier for a while (parameter, local variable, «use»).",
+    "ui-h-aggregation": "Hollow diamond on the whole: the part can exist on its own and be shared (\"has a\").",
+    "ui-h-composition": "Filled diamond on the whole: the part belongs to a single whole and dies with it.",
+    "ui-h-lollipop": "UML \"ball\" notation: the class offers this interface to others.",
     "ui-i-node": "Edit element", "ui-i-edge": "Edit connection", "ui-i-save": "Save", "ui-i-delete": "Delete", "ui-i-confirm": "Click again to delete",
     "ui-dir-TB": "Top → bottom (TB)", "ui-dir-BT": "Bottom → top (BT)", "ui-dir-LR": "Left → right (LR)", "ui-dir-RL": "Right → left (RL)"
   };
@@ -52,7 +91,25 @@
   }
   function opts(values, prefix) { return values.map(function (v) { return [v, prefix + v]; }); }
 
-  // id, icon, label key, fields, preset params
+  // UML symbols for the class-diagram buttons (22×14, stroke = text colour)
+  var SV = function (body) { return '<svg viewBox="0 0 22 14" width="22" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true">' + body + "</svg>"; };
+  var ICONS = {
+    link: SV('<path d="M1 7h20"/>'),
+    association: SV('<path d="M1 7h19M15 3l5 4-5 4"/>'),
+    inheritance: SV('<path d="M1 7h13M14 2.5l7 4.5-7 4.5z"/>'),
+    realization: SV('<path d="M1 7h13" stroke-dasharray="2.4 1.8"/><path d="M14 2.5l7 4.5-7 4.5z"/>'),
+    dependency: SV('<path d="M1 7h19" stroke-dasharray="2.4 1.8"/><path d="M15 3l5 4-5 4"/>'),
+    aggregation: SV('<path d="M1 7l4.5-3.5L10 7l-4.5 3.5zM10 7h11"/>'),
+    composition: SV('<path d="M1 7l4.5-3.5L10 7l-4.5 3.5z" fill="currentColor"/><path d="M10 7h11"/>'),
+    lollipop: SV('<path d="M1 7h12"/><circle cx="17" cy="7" r="4"/>'),
+    abstract: SV('<rect x="3" y="1" width="16" height="12" rx="1"/><text x="11" y="10.5" font-size="9" font-style="italic" text-anchor="middle" fill="currentColor" stroke="none">A</text>'),
+    iface: SV('<circle cx="11" cy="7" r="4.5"/>'),
+    enumeration: SV('<rect x="3" y="1" width="16" height="12" rx="1"/><path d="M6 5h10M6 7.5h10M6 10h10"/>'),
+    pkg: SV('<path d="M2 4V2h7v2M2 4h18v9H2z"/>')
+  };
+
+  // id, icon (text) or svg, label key, fields, preset params; compact = icon only (the name is the tooltip),
+  // sep = separator before, hint = one line under the form title explaining the UML notation
   var PALETTE = {
     flowchart: [
       { id: "flow.node", icon: "▭", label: "ui-c-node", fields: [
@@ -96,22 +153,55 @@
         f("text", "text", "ui-f-label", { required: true })] },
       { id: "seq.autonumber", icon: "#", label: "ui-c-autonumber", fields: [] }
     ],
+    // UML 2.5 class diagrams: classifiers, then one button per relationship with its UML symbol
     class: [
       { id: "class.class", icon: "▤", label: "ui-c-class", fields: [
         f("name", "text", "ui-f-name", { required: true }),
         f("stereotype", "select", "ui-f-stereotype", { options: [["", "ui-f-none"], ["interface", "interface"], ["abstract", "abstract"], ["enumeration", "enumeration"], ["service", "service"]] }),
         f("attributes", "lines", "ui-f-attributes", { placeholder: "+String name\n-int age" }),
         f("methods", "lines", "ui-f-methods", { placeholder: "+total() Money" })] },
-      { id: "class.relation", icon: "→", label: "ui-c-relation", fields: [
-        f("from", "node", "ui-f-from", { selected: true }),
-        f("to", "node", "ui-f-to"),
-        f("type", "select", "ui-f-type", { options: opts(["association", "inheritance", "composition", "aggregation", "dependency", "realization"], "ui-o-") }),
-        f("from_card", "text", "ui-f-from-card", { placeholder: "1" }),
-        f("to_card", "text", "ui-f-to-card", { placeholder: "*" }),
-        f("label", "text", "ui-f-label")] },
+      { id: "class.class", svg: ICONS.abstract, label: "ui-c-abstract", hint: "ui-h-abstract", preset: { stereotype: "abstract" }, fields: [
+        f("name", "text", "ui-f-name", { required: true }),
+        f("attributes", "lines", "ui-f-attributes", { placeholder: "#String id" }),
+        f("methods", "lines", "ui-f-methods", { placeholder: "+area() double*" })] },
+      { id: "class.class", svg: ICONS.iface, label: "ui-c-interface", hint: "ui-h-interface", preset: { stereotype: "interface" }, fields: [
+        f("name", "text", "ui-f-name", { required: true }),
+        f("methods", "lines", "ui-f-operations", { placeholder: "+print() void" })] },
+      { id: "class.class", svg: ICONS.enumeration, label: "ui-c-enum", hint: "ui-h-enum", preset: { stereotype: "enumeration" }, fields: [
+        f("name", "text", "ui-f-name", { required: true }),
+        f("attributes", "lines", "ui-f-literals", { placeholder: "PENDING\nPAID\nSHIPPED" })] },
+      { id: "class.namespace", svg: ICONS.pkg, label: "ui-c-package", hint: "ui-h-package", fields: [
+        f("name", "text", "ui-f-name", { required: true }),
+        f("members", "nodes", "ui-f-classes-in"),
+        f("classes", "lines", "ui-f-classes-new", { placeholder: "Invoice" })] },
       { id: "class.note", icon: "✎", label: "ui-c-note", fields: [
         f("for", "node", "ui-f-for", { optional: true, selected: true }),
-        f("text", "text", "ui-f-label", { required: true })] }
+        f("text", "text", "ui-f-label", { required: true })] },
+      { sep: true, id: "class.relation", svg: ICONS.link, compact: true, label: "ui-c-rel-link", hint: "ui-h-link", preset: { type: "link" }, fields: [
+        f("from", "node", "ui-f-from", { selected: true }), f("to", "node", "ui-f-to"),
+        f("from_card", "text", "ui-f-from-card", { placeholder: "1" }), f("to_card", "text", "ui-f-to-card", { placeholder: "*" }),
+        f("label", "text", "ui-f-label")] },
+      { id: "class.relation", svg: ICONS.association, compact: true, label: "ui-c-rel-association", hint: "ui-h-association", preset: { type: "association" }, fields: [
+        f("from", "node", "ui-f-from", { selected: true }), f("to", "node", "ui-f-navigable-to"),
+        f("from_card", "text", "ui-f-from-card", { placeholder: "1" }), f("to_card", "text", "ui-f-to-card", { placeholder: "*" }),
+        f("label", "text", "ui-f-label")] },
+      { id: "class.relation", svg: ICONS.inheritance, compact: true, label: "ui-c-rel-inheritance", hint: "ui-h-inheritance", preset: { type: "inheritance" }, fields: [
+        f("to", "node", "ui-f-specific", { selected: true }), f("from", "node", "ui-f-general")] },
+      { id: "class.relation", svg: ICONS.realization, compact: true, label: "ui-c-rel-realization", hint: "ui-h-realization", preset: { type: "realization" }, fields: [
+        f("from", "node", "ui-f-implementer", { selected: true }), f("to", "node", "ui-f-interface")] },
+      { id: "class.relation", svg: ICONS.dependency, compact: true, label: "ui-c-rel-dependency", hint: "ui-h-dependency", preset: { type: "dependency" }, fields: [
+        f("from", "node", "ui-f-client", { selected: true }), f("to", "node", "ui-f-supplier"),
+        f("label", "text", "ui-f-label", { placeholder: "«use»" })] },
+      { id: "class.relation", svg: ICONS.aggregation, compact: true, label: "ui-c-rel-aggregation", hint: "ui-h-aggregation", preset: { type: "aggregation" }, fields: [
+        f("from", "node", "ui-f-whole", { selected: true }), f("to", "node", "ui-f-part"),
+        f("from_card", "text", "ui-f-from-card", { placeholder: "1" }), f("to_card", "text", "ui-f-to-card", { placeholder: "*" }),
+        f("label", "text", "ui-f-label")] },
+      { id: "class.relation", svg: ICONS.composition, compact: true, label: "ui-c-rel-composition", hint: "ui-h-composition", preset: { type: "composition" }, fields: [
+        f("from", "node", "ui-f-whole", { selected: true }), f("to", "node", "ui-f-part"),
+        f("from_card", "text", "ui-f-from-card", { placeholder: "1" }), f("to_card", "text", "ui-f-to-card", { placeholder: "1..*" }),
+        f("label", "text", "ui-f-label")] },
+      { id: "class.relation", svg: ICONS.lollipop, compact: true, label: "ui-c-rel-lollipop", hint: "ui-h-lollipop", preset: { type: "lollipop" }, fields: [
+        f("from", "node", "ui-f-provider", { selected: true }), f("to", "text", "ui-f-iface-name", { required: true, placeholder: "Printable" })] }
     ],
     state: [
       { id: "state.state", icon: "▭", label: "ui-c-state", fields: [f("label", "text", "ui-f-name", { required: true })] },
@@ -216,15 +306,22 @@
       ctors.appendChild(el("span", { class: "pal-sep" }));
     }
     items.forEach(function (item, i) {
-      var b = el("button", { class: "pal-btn", "data-i": String(i), title: t(item.label) });
-      b.appendChild(el("span", { class: "pal-icon" }, item.icon));
-      b.appendChild(el("span", null, t(item.label)));
+      if (item.sep) ctors.appendChild(el("span", { class: "pal-sep" }));
+      var b = el("button", { class: "pal-btn" + (item.compact ? " compact" : ""), "data-i": String(i), title: t(item.label) });
+      b.appendChild(icon(item));
+      if (!item.compact) b.appendChild(el("span", null, t(item.label)));
       b.addEventListener("click", function () {
         if (!item.fields.length) return submit(item, {});
         openForm(item, b);
       });
       ctors.appendChild(b);
     });
+  }
+
+  function icon(item) {
+    var span = el("span", { class: "pal-icon" }, item.svg ? null : item.icon);
+    if (item.svg) span.innerHTML = item.svg;
+    return span;
   }
 
   function nodeOptions(select, field) {
@@ -244,8 +341,11 @@
   function openForm(item, anchor) {
     form.innerHTML = "";
     state.open = item;
-    var title = el("div", { class: "ctor-title" }, item.icon + "  " + t(item.label));
+    var title = el("div", { class: "ctor-title" });
+    title.appendChild(icon(item));
+    title.appendChild(document.createTextNode("  " + t(item.label)));
     form.appendChild(title);
+    if (item.hint) form.appendChild(el("div", { class: "ctor-hint" }, t(item.hint)));
     var inputs = {};
     item.fields.forEach(function (field) {
       var row = el("label", { class: "ctor-row" });
@@ -631,7 +731,7 @@
     },
     select: function (id) { state.selected = id; },
     strings: function (s) {
-      for (var k in s) if (/^ui-(c|f|o|i|m|dir)-/.test(k)) T[k] = s[k];
+      for (var k in s) if (/^ui-(c|f|o|i|m|h|dir)-/.test(k)) T[k] = s[k];
       renderBar();
     }
   };
