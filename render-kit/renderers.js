@@ -14,9 +14,24 @@
   ];
 
   var T = {
-    "ui-r-tip": "Renderer in use — click for help",
+    "ui-r-tip": "Renderers — what they are and which one to use",
     "ui-r-title": "Renderers",
-    "ui-r-intro": "Mermaid always draws the diagram; what changes is who places the elements (the layout). Flowcharts, state, class, ER and requirement diagrams let you choose the layout in the box beside this button; every other type uses Mermaid's own layout for that type.",
+    "ui-r-what-title": "What is a renderer?",
+    "ui-r-what-text": "Turning the text of a diagram into a picture takes two steps:",
+    "ui-r-step1-title": "1 · Layout",
+    "ui-r-step1": "decides where each box, arrow and label goes — like arranging furniture in a room before decorating it.",
+    "ui-r-step2-title": "2 · Drawing",
+    "ui-r-step2": "paints the shapes, texts and arrows in those places. Mermaid always does this part.",
+    "ui-r-what-end": "So what changes between the renderers below is mostly the layout: the same diagram can come out arranged in different ways.",
+    "ui-r-choose-title": "Which one should I use?",
+    "ui-r-choose-dagre": "A small or medium diagram that should simply look good → Automatic (dagre).",
+    "ui-r-choose-elk": "Many arrows crossing, or a big diagram that looks messy → ELK.",
+    "ui-r-choose-elk-interactive": "You want to drag a few boxes and keep them where you put them → ELK interactive.",
+    "ui-r-choose-exact": "The drawing must come out identical every time (documentation, slides) → Exact positions.",
+    "ui-r-choose-other": "Sequence, Gantt, charts and other non-graph types: nothing to choose — Mermaid uses the layout made for that type.",
+    "ui-r-howto-title": "How do I switch?",
+    "ui-r-howto": "In Edit mode, use the Layout box in this toolbar (it appears for flowchart, state, class, ER and requirement diagrams). The choice is saved in the code itself, as a line like %% @odg layout elk, so agents and other people see the same result. Dragging a box switches to ELK interactive by itself.",
+    "ui-r-details-title": "The renderers in detail",
     "ui-r-agents": "Images sent to agents (MCP) and exports use the same renderer and layout you see here.",
     "ui-r-in-use": "in use",
     "ui-r-now": "This diagram uses:",
@@ -63,10 +78,10 @@
     "ui-r-what-zenuml": "ZenUML's own renderer, plugged into Mermaid. It draws in HTML; PNG export uses a compatibility mode.",
     "ui-r-best-zenuml": "sequence diagrams written like code"
   };
-  var VERSIONS = "elkjs 0.9.3 · ZenUML 1.0.1";
+  // bundled versions (render-kit/vendor/*_VERSION, scripts/build-render-kit.sh); Mermaid 12 no longer exposes its own
+  var VERSIONS = "Mermaid 12.2.0 · elkjs 0.9.3 · ZenUML 1.0.1";
 
   var chip = document.getElementById("renderer-chip");
-  var label = document.getElementById("renderer-label");
   var modal = document.getElementById("renderer-modal");
   var panel = modal && modal.querySelector(".rm-dialog");
   if (!chip || !panel) return;
@@ -94,10 +109,20 @@
     current.id = rendererFor(type, mode, graph);
     current.fallback = !!fallback;
     chip.hidden = false;
-    label.textContent = t("ui-r-chip-" + current.id);
-    chip.title = t("ui-r-tip");
+    setTip();
     chip.classList.toggle("warn", current.fallback);
     if (!modal.hidden) render();
+  }
+
+  // the button is only a "?": its tooltip says which renderer drew this diagram
+  function setTip() {
+    var tip = (current.id ? t("ui-r-chip-" + current.id) + " — " : "") + t("ui-r-tip");
+    chip.title = tip;
+    chip.setAttribute("aria-label", tip);
+  }
+
+  function section(body, key) {
+    body.appendChild(el("h3", null, t(key)));
   }
 
   function mark(v) {
@@ -117,7 +142,6 @@
     panel.appendChild(head);
 
     var body = el("div", "rm-body");
-    body.appendChild(el("p", "rm-intro", t("ui-r-intro")));
     if (current.id) {
       var now = el("p", "rm-now");
       now.appendChild(document.createTextNode(t("ui-r-now") + " "));
@@ -125,6 +149,34 @@
       body.appendChild(now);
     }
     if (current.fallback) body.appendChild(el("p", "rm-warn", t("ui-r-fallback")));
+
+    // what a renderer is: layout first, then drawing
+    section(body, "ui-r-what-title");
+    body.appendChild(el("p", null, t("ui-r-what-text")));
+    var steps = el("div", "rm-steps");
+    [["ui-r-step1-title", "ui-r-step1"], ["ui-r-step2-title", "ui-r-step2"]].forEach(function (p, i) {
+      if (i) steps.appendChild(el("span", "rm-step-arrow", "→"));
+      var st = el("div", "rm-step");
+      st.appendChild(el("b", null, t(p[0])));
+      st.appendChild(el("span", null, t(p[1])));
+      steps.appendChild(st);
+    });
+    body.appendChild(steps);
+    body.appendChild(el("p", "rm-muted", t("ui-r-what-end")));
+
+    // which one to use, by situation (the current one highlighted)
+    section(body, "ui-r-choose-title");
+    var choose = el("ul", "rm-choose");
+    ["dagre", "elk", "elk-interactive", "exact", "other"].forEach(function (id) {
+      var active = id === current.id || (id === "other" && (current.id === "mermaid" || current.id === "zenuml"));
+      choose.appendChild(el("li", active ? "active" : "", t("ui-r-choose-" + id)));
+    });
+    body.appendChild(choose);
+
+    section(body, "ui-r-howto-title");
+    body.appendChild(el("p", null, t("ui-r-howto")));
+
+    section(body, "ui-r-details-title");
 
     // one card per renderer: where it is used and what it does
     var cards = el("div", "rm-cards");
@@ -164,7 +216,7 @@
     panel.appendChild(body);
 
     var foot = el("div", "rm-actions");
-    foot.appendChild(el("span", "rm-versions", "Mermaid " + ((window.mermaid && mermaid.version) || "") + " · " + VERSIONS));
+    foot.appendChild(el("span", "rm-versions", VERSIONS));
     var ok = el("button", "rm-ok", t("ui-r-close"));
     ok.addEventListener("click", hide);
     foot.appendChild(ok);
@@ -197,8 +249,7 @@
     update: update,
     strings: function (s) {
       Object.keys(s || {}).forEach(function (k) { if (/^ui-r-/.test(k)) T[k] = s[k]; });
-      if (current.id) label.textContent = t("ui-r-chip-" + current.id);
-      chip.title = t("ui-r-tip");
+      setTip();
       if (!modal.hidden) render();
     },
     hide: hide

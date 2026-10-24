@@ -44,10 +44,6 @@
 <div id="banner" hidden></div>
 <div id="empty" hidden></div>
 <div id="toolbar" hidden>
-  <button id="renderer-chip" hidden>
-    <span id="renderer-label"></span>
-    <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.6" r=".8" fill="currentColor"/></svg>
-  </button>
   <button data-act="zoom-out" title="-">&#8722;</button>
   <span id="zoom-label">100%</span>
   <button data-act="zoom-in" title="+">+</button>
@@ -61,6 +57,10 @@
     </select>
     <button id="reset-positions" title="Reset positions">&#8634;</button>
   </span>
+  <!-- renderer help (renderers.js): which renderer drew this diagram and how they differ -->
+  <button id="renderer-chip" hidden>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.6" r=".8" fill="currentColor"/></svg>
+  </button>
 </div>
 <!-- renderer help (renderers.js fills the dialog) -->
 <div id="renderer-modal" hidden><div class="rm-dialog" role="dialog" aria-modal="true"></div></div>
