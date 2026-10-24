@@ -82,9 +82,11 @@ public sealed class Updater
         App.Log($"update: package {expected} extracted to {payload}; installing into {installDir}");
 
         var count = await Task.Run(() => SwapFiles(payload, installDir, AsideMarker + DateTime.Now.Ticks));
-        var installed = VersionOf(Path.Combine(installDir, "ODiagramador.dll"));
-        App.Log($"update: {count} files replaced; installed version {installed}");
-        if (installed != expected) throw new IOException($"the files were copied but the installed version is {installed}, expected {expected}");
+        // compare contents: asking Windows for the installed DLL's version answers from the copy this
+        // process has loaded (still the old one), which made 0.3.2 report a failed update that had worked
+        var differ = await Task.Run(() => KeyFiles.Where(f => File.Exists(Path.Combine(payload, f)) && !SameContent(Path.Combine(payload, f), Path.Combine(installDir, f))).ToList());
+        App.Log($"update: {count} files replaced; {(differ.Count == 0 ? $"verified {string.Join(", ", KeyFiles)} = package {expected}" : "DIFFERENT: " + string.Join(", ", differ))}");
+        if (differ.Count > 0) throw new IOException($"the files were copied but {string.Join(", ", differ)} differ from the package");
         try { Directory.Delete(work, true); } catch { /* temp folder, best effort */ }
 
         progress("restart");
@@ -172,6 +174,14 @@ public sealed class Updater
         {
             App.Log("cleanup: " + ex.Message);
         }
+    }
+
+    private static readonly string[] KeyFiles = { "ODiagramador.exe", "ODiagramador.dll", "odg.exe", "odg_ffi.dll" };
+
+    private static bool SameContent(string a, string b)
+    {
+        if (!File.Exists(b) || new FileInfo(a).Length != new FileInfo(b).Length) return false;
+        return File.ReadAllBytes(a).AsSpan().SequenceEqual(File.ReadAllBytes(b));
     }
 
     private static string VersionOf(string file)

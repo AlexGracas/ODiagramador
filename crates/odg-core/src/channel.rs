@@ -213,7 +213,15 @@ impl Workspace {
         fs::create_dir_all(self.state_dir())?;
         let mut p = presence.clone();
         p.updated = epoch_now();
-        fs::write(self.presence_file(), serde_json::to_vec_pretty(&p)?)?;
+        let data = serde_json::to_vec_pretty(&p)?;
+        // write-then-rename: readers never see half a file, and a viewer.json held open by another
+        // program (sync clients, indexers: Windows os error 1224) does not need to be truncated
+        let tmp = self.state_dir().join(format!("viewer.json.{}.tmp", std::process::id()));
+        fs::write(&tmp, &data)?;
+        if fs::rename(&tmp, self.presence_file()).is_err() {
+            let _ = fs::remove_file(&tmp);
+            fs::write(self.presence_file(), &data)?;
+        }
         Ok(())
     }
 

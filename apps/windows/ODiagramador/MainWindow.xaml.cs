@@ -676,7 +676,8 @@ public partial class MainWindow : Window
             if (DateTime.UtcNow - _presenceAt >= TimeSpan.FromSeconds(2))
             {
                 _presenceAt = DateTime.UtcNow;
-                Core.CallNode<JsonNode?>("set_presence", new JsonObject
+                // presence is best effort (another program may hold viewer.json): never block the inbox
+                Core.CallOrDefault<JsonNode>("set_presence", new JsonObject
                 {
                     ["workspace"] = _workspace, ["app"] = "ODiagramador", ["platform"] = "windows", ["version"] = Updater.CurrentVersion,
                     ["path"] = _selected, ["element_id"] = _selectedElement,
