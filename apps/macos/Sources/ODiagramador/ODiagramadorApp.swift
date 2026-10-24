@@ -22,6 +22,10 @@ struct ODiagramadorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var state = AppState()
 
+    init() {
+        NativeRelaunch.ifTranslated()
+    }
+
     var body: some Scene {
         // single window: odiagramador:// links (open_in_viewer) must reuse it, never spawn another
         Window("ODiagramador", id: "main") {

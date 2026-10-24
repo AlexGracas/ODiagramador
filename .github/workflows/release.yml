@@ -29,6 +29,10 @@ jobs:
       - name: Build universal app (Apple Silicon + Intel)
         run: |
           VERSION="${TAG#v}" UNIVERSAL=1 ZIP=1 apps/macos/build-app.sh "$PWD/dist"
+          # every executable must run natively on Apple silicon and on Intel (no Rosetta warning)
+          for b in dist/ODiagramador.app/Contents/MacOS/*; do
+            lipo "$b" -verify_arch arm64 x86_64 || { echo "::error::$b is not universal ($(lipo -archs "$b"))"; exit 1; }
+          done
           lipo -archs dist/ODiagramador.app/Contents/MacOS/ODiagramador
       - name: Smoke test bundled odg (headless WebKit render)
         run: dist/ODiagramador.app/Contents/MacOS/odg check examples/diagrams/order-flow.mmd --no-save

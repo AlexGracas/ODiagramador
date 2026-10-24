@@ -7,6 +7,7 @@
 //!   odg mcp-config [--client NAME]          print the MCP config snippet for an agent
 
 mod mcp;
+mod native;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -104,6 +105,7 @@ fn open_ws(dir: Option<PathBuf>) -> Result<Workspace, String> {
 }
 
 fn main() -> ExitCode {
+    native::ensure_native();
     let cli = Cli::parse();
     let lang_arg = cli.lang.clone();
     let result = match cli.cmd {
