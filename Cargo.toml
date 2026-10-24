@@ -5,7 +5,7 @@ members = ["crates/odg-core", "crates/odg-render", "crates/odg-cli", "crates/odg
 exclude = ["apps/linux"]
 
 [workspace.package]
-version = "0.7.0"
+version = "0.7.1"
 edition = "2021"
 license = "MIT"
 authors = ["ODiagramador contributors"]

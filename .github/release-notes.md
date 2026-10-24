@@ -28,6 +28,15 @@ claude mcp add odiagramador -- /Applications/ODiagramador.app/Contents/MacOS/odg
 
 No Windows o caminho é `...\ODiagramador\odg.exe`. Guia completo: [docs/AGENTS.md](https://github.com/AlexGracas/ODiagramador/blob/main/docs/AGENTS.md).
 
+## Novidades da 0.7.1
+- **Diagramas de classe (UML 2.5)**: novos construtores — classe abstrata, interface, enumeração e pacote — e um botão com o **símbolo UML** de cada relação: associação, associação direcionada, generalização, realização, dependência, agregação, composição e interface fornecida (pirulito). Cada formulário diz o papel de cada classe (pai/filha, todo/parte, cliente/fornecedor) e explica a notação.
+- **Setas de classe encostam na classe**: triângulos e losangos não ficam mais soltos a ~9px da caixa (defeito do visual "neo" do Mermaid 12).
+- **Menu do botão direito numa classe**: "Adicionar atributo…" e "Adicionar operação…" (aceita `total(): Money`, visibilidade + - # ~, `$` estático e `*` abstrato).
+- **Lista de diagramas**: mostra o **tipo** de cada diagrama, agrupa por tipo ou pasta e ordena por nome ou data; pode ser **recolhida** numa faixa "DIAGRAMAS".
+- **Painéis recolhidos deixam uma faixa com nome** ("› CÓDIGO", "PROBLEMAS · COMENTÁRIOS · ATIVIDADE") — clique para trazê-los de volta.
+- **Renderizadores**: botão "?" na barra do diagrama abre uma explicação didática — o que é um renderizador, qual usar em cada situação, como trocar e uma comparação entre eles.
+- MCP: `list_diagrams` informa o tipo; `edit_element` ganha `style` (cores) e `member` (atributo/operação de classe).
+
 ## Novidades da 0.7.0
 - **Edição pelo mouse mais natural**: clique seleciona, arrastar move (em todos os layouts de grafo), **clique duplo renomeia** e o **botão direito abre um menu de contexto** — renomear/editar texto, forma, **cor** (preenchimento e borda), ligar a outro elemento, excluir e propriedades.
 - **Excluir apaga na hora** (sem "clique de novo"); use Desfazer se precisar.
