@@ -627,7 +627,7 @@ impl Server {
             return Ok((msg, format!("{what}, but the viewer is closed: it will be shown if the app opens in the next {} s and stays in the conversation (get_user_replies).", odg_core::channel::LATE_DELIVERY_SECS)));
         }
         let note = match launch_viewer(self.ws.root(), msg.path.as_deref()) {
-            Ok(()) => format!("{what}: the viewer was closed, so ODiagramador is being launched; it shows this as soon as it opens."),
+            Ok(()) => format!("{what}: the viewer was not showing this folder, so ODiagramador was asked to open it (the running window switches to it, or the app starts); it shows this as soon as it does."),
             Err(e) => format!("{what}, but the viewer is not open and could not be launched ({e}). The human will see it when they open ODiagramador on this folder."),
         };
         Ok((msg, note))

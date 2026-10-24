@@ -23,6 +23,19 @@ public partial class App : Application
             ex.Handled = true;
         };
         AfterUpdate(e.Args);
+        if (!SingleInstance.TryBecomePrimary())
+        {
+            if (SingleInstance.Forward(e.Args))
+            {
+                Log("single instance: handed the request to the running window");
+                Environment.Exit(0);
+            }
+            Log("single instance: the running window did not answer; opening another one");
+        }
+        else
+        {
+            SingleInstance.Listen(args => (Current.MainWindow as MainWindow)?.HandleExternalLaunch(args));
+        }
         ApplyTheme(Prefs);
         RegisterUrlScheme();
         base.OnStartup(e);

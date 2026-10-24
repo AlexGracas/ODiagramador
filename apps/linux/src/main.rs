@@ -104,11 +104,67 @@ struct Ui {
     state: Rc<RefCell<State>>,
 }
 
+thread_local! {
+    /// The window of this (single) instance; later launches reuse it.
+    static MAIN_UI: RefCell<Option<Ui>> = const { RefCell::new(None) };
+}
+
 fn main() -> glib::ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let app = adw::Application::builder().application_id(APP_ID).flags(gio::ApplicationFlags::NON_UNIQUE).build();
-    app.connect_activate(move |app| build_ui(app, &args));
-    app.run_with_args(&[] as &[&str])
+    // one instance per session: agents open the viewer through odiagramador:// links, and each link used to
+    // start another window; GApplication now hands later command lines to the running instance
+    let app = adw::Application::builder().application_id(APP_ID).flags(gio::ApplicationFlags::HANDLES_COMMAND_LINE).build();
+    app.connect_command_line(|app, cmd| {
+        let args: Vec<String> = cmd.arguments().iter().skip(1).map(|a| a.to_string_lossy().to_string()).collect();
+        match MAIN_UI.with(|u| u.borrow().clone()) {
+            Some(ui) => handle_external_launch(&ui, &args),
+            None => build_ui(app, &args),
+        }
+        glib::ExitCode::SUCCESS
+    });
+    app.run()
+}
+
+/// A later launch (an agent's odiagramador:// link, or the user starting the app again) reuses this window.
+fn handle_external_launch(ui: &Ui, args: &[String]) {
+    let (ws, path) = parse_args(args);
+    if let Some(dir) = ws.filter(|d| d.is_dir()) {
+        let current = ui.state.borrow().ws.as_ref().map(|w| w.root().to_path_buf());
+        if current.as_deref() != std::fs::canonicalize(&dir).ok().as_deref() {
+            open_workspace(ui, dir);
+        }
+    }
+    if let Some(p) = path {
+        refresh_list(ui);
+        if ui.state.borrow().diagrams.iter().any(|d| d.path == p) {
+            select(ui, Some(p.clone()));
+            let mut i = 0;
+            while let Some(row) = ui.list.row_at_index(i) {
+                if row.widget_name() == p.as_str() {
+                    ui.list.select_row(Some(&row));
+                    break;
+                }
+                i += 1;
+            }
+        }
+    }
+    ui.window.present();
+}
+
+/// [--workspace DIR] [odiagramador://open?workspace=…&path=…] → (workspace, diagram).
+fn parse_args(args: &[String]) -> (Option<PathBuf>, Option<String>) {
+    let mut ws: Option<PathBuf> = None;
+    let mut path = None;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a == "--workspace" {
+            ws = it.next().map(PathBuf::from);
+        } else if a.starts_with("odiagramador://") {
+            let (w, p) = parse_open_url(a);
+            ws = w.map(PathBuf::from).or(ws);
+            path = p;
+        }
+    }
+    (ws, path)
 }
 
 /// The app icon, installed in the user's icon theme so windows, the dock and the .desktop entry can use it.
@@ -278,19 +334,9 @@ fn build_ui(app: &adw::Application, args: &[String]) {
     apply_strings(&ui);
     wire(&ui, &ucm);
 
+    MAIN_UI.with(|u| *u.borrow_mut() = Some(ui.clone()));
     // workspace from args / URL / last session
-    let mut ws_arg: Option<PathBuf> = None;
-    let mut open_path: Option<String> = None;
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        if a == "--workspace" {
-            ws_arg = it.next().map(PathBuf::from);
-        } else if a.starts_with("odiagramador://") {
-            let (w, p) = parse_open_url(a);
-            ws_arg = w.map(PathBuf::from).or(ws_arg);
-            open_path = p;
-        }
-    }
+    let (ws_arg, open_path) = parse_args(args);
     let ws_arg = ws_arg.or_else(|| ui.state.borrow().prefs.last_workspace.clone().map(PathBuf::from));
     if let Some(dir) = ws_arg.filter(|d| d.is_dir()) {
         open_workspace(&ui, dir);

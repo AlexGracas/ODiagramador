@@ -130,12 +130,7 @@ public partial class MainWindow : Window
         Viewer.CoreWebView2.WebMessageReceived += (_, e) => OnViewerMessage(e.TryGetWebMessageAsString());
         Viewer.CoreWebView2.Navigate("https://odg.localhost/index.html?mode=viewer");
 
-        string? ws = null, open = null;
-        for (var i = 0; i < App.Args.Length; i++)
-        {
-            if (App.Args[i] == "--workspace" && i + 1 < App.Args.Length) ws = App.Args[++i];
-            else if (App.Args[i].StartsWith("odiagramador://")) (ws, open) = ParseOpenUrl(App.Args[i], ws);
-        }
+        var (ws, open) = ParseArgs(App.Args);
         ws ??= Prefs.LastWorkspace;
         if (ws is not null && Directory.Exists(ws)) OpenWorkspace(ws);
         if (open is not null) Select(open);
@@ -390,6 +385,41 @@ public partial class MainWindow : Window
         if (_workspace is not null) Core.Run("set_config", new { workspace = _workspace, lang });
         LoadStrings();
         Render();
+    }
+
+    /// <summary>[--workspace DIR] [odiagramador://open?workspace=…&amp;path=…] → (workspace, diagram).</summary>
+    private static (string? Workspace, string? Path) ParseArgs(string[] args)
+    {
+        string? ws = null, open = null;
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--workspace" && i + 1 < args.Length) ws = args[++i];
+            else if (args[i].StartsWith("odiagramador://")) (ws, open) = ParseOpenUrl(args[i], ws);
+        }
+        return (ws, open);
+    }
+
+    /// <summary>A later launch (an agent's odiagramador:// link, or the user starting the app again) reuses this window.</summary>
+    internal void HandleExternalLaunch(string[] args)
+    {
+        var (ws, open) = ParseArgs(args);
+        if (ws is not null && Directory.Exists(ws) && !string.Equals(Path.GetFullPath(ws), _workspace, StringComparison.OrdinalIgnoreCase))
+            OpenWorkspace(ws);
+        if (open is not null && _workspace is not null)
+        {
+            RefreshList();
+            if ((DiagramList.ItemsSource as List<DiagramInfo>)?.FirstOrDefault(d => d.Path == open) is { } item)
+            {
+                Select(open);
+                _loading = true;
+                DiagramList.SelectedItem = item;
+                _loading = false;
+            }
+        }
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+        Topmost = true;
+        Topmost = false;
     }
 
     private static (string?, string?) ParseOpenUrl(string url, string? ws)
