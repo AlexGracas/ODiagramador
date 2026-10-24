@@ -16,6 +16,8 @@ final class AppState: ObservableObject {
     @Published var feedback: [Feedback] = []
     @Published var events: [ActivityEvent] = []
     @Published var selectedElement: String?
+    /// Edit mode (palette, inspector, typing) or view mode (look and select only), chosen in the viewer.
+    @Published var editing = true
     @Published var selectedProblem: Int?
     @Published var lang: String = "en"
     @Published var strings: [String: String] = [:]
@@ -75,6 +77,12 @@ final class AppState: ObservableObject {
         viewer.onConstruct = { [weak self] args in self?.applyConstruct(args) }
         viewer.onEdit = { [weak self] args in self?.applyEdit(args) }
         viewer.onAnswer = { [weak self] id, text in self?.answerAgent(id, text) }
+        viewer.onSetSource = { [weak self] text in
+            guard let self, self.selectedPath != nil, text != self.source else { return }
+            self.source = text
+            self.flushSave()
+        }
+        viewer.onEditMode = { [weak self] on in self?.editing = on }
         viewer.onView = { [weak self] zoom, center, visible in
             self?.viewState = (zoom, center, visible)
             self?.presenceAt = .distantPast // tell agents on the next poll
@@ -385,7 +393,7 @@ final class AppState: ObservableObject {
         renderSeq += 1
         renderSources = [renderSeq: source]
         viewer.send([
-            "op": "process", "id": renderSeq, "source": source,
+            "op": "process", "id": renderSeq, "source": source, "doc": selectedPath ?? "",
             "theme": darkMode ? "dark" : "default", "png": true, "scale": 2,
             "font": diagramFont,
         ])

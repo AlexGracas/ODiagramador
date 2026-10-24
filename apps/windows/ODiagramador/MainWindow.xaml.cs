@@ -107,6 +107,14 @@ public partial class MainWindow : Window
         ProblemsTab.Header = $"{T("ui-problems")} ({_report?.Problems.Count ?? 0})";
         FeedbackTab.Header = T("ui-feedback");
         ActivityTab.Header = T("ui-activity");
+        ProblemsHelp.Text = T("ui-problems-help");
+        FeedbackHelp.Text = T("ui-feedback-help");
+        ActivityHelp.Text = T("ui-activity-help");
+        CodeSplitter.ToolTip = T("ui-split-code-tip");
+        BottomSplitter.ToolTip = T("ui-split-bottom-tip");
+        ProblemsTab.ToolTip = ProblemsHelp.Text;
+        FeedbackTab.ToolTip = FeedbackHelp.Text;
+        ActivityTab.ToolTip = ActivityHelp.Text;
         AddFeedbackButton.Content = T("ui-add-feedback");
         ContextExpander.Header = T("ui-feedback-context");
         IncludeContextBox.Content = T("ui-feedback-context-include");
@@ -475,6 +483,17 @@ public partial class MainWindow : Window
                 _viewVisible = msg["visible_elements"]?.AsArray().DeepClone().AsArray() ?? new JsonArray();
                 _presenceAt = DateTime.MinValue; // tell agents on the next poll
                 break;
+            case "set-source": // undo / redo in the viewer
+                if (_selected is not null && msg["source"]?.GetValue<string>() is { } src && src != Editor.Text)
+                {
+                    App.Log($"{msg["reason"]} on {_selected}");
+                    Editor.Document.Text = src;
+                    FlushSave();
+                }
+                break;
+            case "edit-mode": // view mode: the source can be read and selected, not typed into
+                Editor.IsReadOnly = msg["editing"]?.GetValue<bool>() == false;
+                break;
             case "answer":
                 AnswerAgent(msg["question_id"]?.GetValue<string>(), msg["text"]?.GetValue<string>());
                 break;
@@ -553,7 +572,7 @@ public partial class MainWindow : Window
         _renderSource = Editor.Text;
         Send(new JsonObject
         {
-            ["op"] = "process", ["id"] = _renderSeq, ["source"] = _renderSource,
+            ["op"] = "process", ["id"] = _renderSeq, ["source"] = _renderSource, ["doc"] = _selected,
             ["theme"] = Prefs.IsDark ? "dark" : "default", ["png"] = true, ["scale"] = 2, ["font"] = _diagramFont,
         });
     }
@@ -894,6 +913,43 @@ public partial class MainWindow : Window
         FeedbackBox.Text = "";
         RefreshFeedbackContext(force: true);
         RefreshList();
+    }
+
+    // ---- double-click a splitter: collapse / restore the code or the bottom panel (sizes come back as they were)
+    private GridLength _codeWidth = new(2, GridUnitType.Star), _bottomHeight = new(1, GridUnitType.Star);
+
+    private void OnCodeSplitterDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        var col = EditorGrid.ColumnDefinitions[0];
+        if (col.ActualWidth > 12)
+        {
+            _codeWidth = col.Width;
+            col.MinWidth = 0;
+            col.Width = new GridLength(0);
+        }
+        else
+        {
+            col.Width = _codeWidth.Value > 0 ? _codeWidth : new GridLength(2, GridUnitType.Star);
+            col.MinWidth = 220;
+        }
+        e.Handled = true;
+    }
+
+    private void OnBottomSplitterDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        var row = RightGrid.RowDefinitions[2];
+        if (row.ActualHeight > 12)
+        {
+            _bottomHeight = row.Height;
+            row.MinHeight = 0;
+            row.Height = new GridLength(0);
+        }
+        else
+        {
+            row.Height = _bottomHeight.Value > 0 ? _bottomHeight : new GridLength(1, GridUnitType.Star);
+            row.MinHeight = 120;
+        }
+        e.Handled = true;
     }
 
     // ---- context sent with a comment: regenerated on diagram / selection changes unless the human edited it

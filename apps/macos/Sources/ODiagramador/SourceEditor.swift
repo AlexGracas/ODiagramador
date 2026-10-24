@@ -8,6 +8,8 @@ struct SourceEditor: NSViewRepresentable {
     var warningLines: Set<Int>
     @Binding var scrollToLine: Int?
     var font: NSFont = .monospacedSystemFont(ofSize: 13, weight: .regular)
+    /// False in view mode: the source can be read and selected, not typed into.
+    var editable = true
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -54,6 +56,7 @@ struct SourceEditor: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.parent = self
         guard let tv = context.coordinator.textView else { return }
+        if tv.isEditable != editable { tv.isEditable = editable }
         if tv.font != font {
             tv.font = font
             tv.typingAttributes[.font] = font

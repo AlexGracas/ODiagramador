@@ -65,6 +65,10 @@ final class ViewerBridge: NSObject, WKScriptMessageHandler {
     var onAnswer: ((String, String) -> Void)?
     /// What the human sees: (zoom, element in the centre, elements on screen).
     var onView: ((Double?, String?, [String]) -> Void)?
+    /// Undo / redo in the viewer: a whole new source to apply and save.
+    var onSetSource: ((String) -> Void)?
+    /// Edit / view mode switched in the viewer.
+    var onEditMode: ((Bool) -> Void)?
 
     func send(_ message: [String: Any]) {
         guard ready, let webView else {
@@ -111,6 +115,10 @@ final class ViewerBridge: NSObject, WKScriptMessageHandler {
             if let action = obj["action"] as? String {
                 onEdit?(["action": action, "params": obj["params"] as? [String: Any] ?? [:]])
             }
+        case "set-source":
+            if let source = obj["source"] as? String { onSetSource?(source) }
+        case "edit-mode":
+            onEditMode?(obj["editing"] as? Bool ?? true)
         case "construct":
             if let construct = obj["construct"] as? String {
                 onConstruct?(["construct": construct, "params": obj["params"] as? [String: Any] ?? [:]])

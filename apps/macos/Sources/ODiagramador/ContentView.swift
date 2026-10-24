@@ -5,6 +5,10 @@ struct ContentView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var newName = ""
     @State private var showingNew = false
+    @AppStorage("codeWidth") private var codeWidth = 380.0
+    @AppStorage("codeCollapsed") private var codeCollapsed = false
+    @AppStorage("bottomHeight") private var bottomHeight = 200.0
+    @AppStorage("bottomCollapsed") private var bottomCollapsed = false
 
     var body: some View {
         NavigationSplitView {
@@ -14,16 +18,17 @@ struct ContentView: View {
             if state.workspace == nil {
                 Welcome()
             } else {
-                VSplitView {
-                    HSplitView {
+                // double-click a bar (or click its chevron) to collapse / restore the code or the bottom panel
+                CollapsibleSplit(axis: .vertical, collapses: .second, size: $bottomHeight, collapsed: $bottomCollapsed,
+                                 minSize: 120, minOther: 260, help: state.t("ui-split-bottom-tip")) {
+                    CollapsibleSplit(axis: .horizontal, collapses: .first, size: $codeWidth, collapsed: $codeCollapsed,
+                                     minSize: 220, minOther: 320, help: state.t("ui-split-code-tip")) {
                         SourcePane()
-                            .frame(minWidth: 260, idealWidth: 380)
+                    } second: {
                         PreviewPane()
-                            .frame(minWidth: 320)
                     }
-                    .frame(minHeight: 260)
+                } second: {
                     BottomPanel()
-                        .frame(minHeight: 130, idealHeight: 200)
                 }
             }
         }
@@ -134,7 +139,7 @@ struct SourcePane: View {
                         .foregroundStyle(.purple)
                 }
             }
-            SourceEditor(text: $state.source, errorLines: lines("error"), warningLines: lines("warning"), scrollToLine: $state.scrollToLine, font: state.editorFont)
+            SourceEditor(text: $state.source, errorLines: lines("error"), warningLines: lines("warning"), scrollToLine: $state.scrollToLine, font: state.editorFont, editable: state.editing)
                 .disabled(state.selectedPath == nil)
         }
     }
@@ -192,12 +197,23 @@ struct BottomPanel: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .fixedSize()
+                .help(state.t(["ui-problems-help", "ui-feedback-help", "ui-activity-help"][tab]))
                 Spacer()
                 if let r = state.report {
                     Text(r.summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             .padding(6)
+            // what this tab is for, in one line
+            HStack(spacing: 6) {
+                Image(systemName: ["exclamationmark.triangle", "text.bubble", "clock.arrow.circlepath"][tab])
+                Text(state.t(["ui-problems-help", "ui-feedback-help", "ui-activity-help"][tab])).lineLimit(2)
+                Spacer()
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 6)
             Divider()
             switch tab {
             case 0: ProblemsList()

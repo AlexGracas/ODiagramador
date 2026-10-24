@@ -94,6 +94,7 @@ struct Ui {
     notebook: gtk::Notebook,
     feedback_entry: gtk::Entry,
     feedback_button: gtk::Button,
+    tab_help: Vec<gtk::Label>,
     context_expander: gtk::Expander,
     context_view: gtk::TextView,
     context_include: gtk::CheckButton,
@@ -130,6 +131,36 @@ fn main() -> glib::ExitCode {
         glib::ExitCode::SUCCESS
     });
     app.run()
+}
+
+/// Double-click on the paned's bar collapses one side (`end`: the end child, else the start child) and
+/// restores it to its previous size; the bar shows a grip icon and is wider so it is easy to hit.
+fn make_collapsible(paned: &gtk::Paned, end: bool) {
+    paned.set_wide_handle(true);
+    paned.add_css_class("odg-split");
+    paned.set_shrink_start_child(true);
+    paned.set_shrink_end_child(true);
+    let saved = Rc::new(std::cell::Cell::new(0i32));
+    let click = gtk::GestureClick::builder().button(1).propagation_phase(gtk::PropagationPhase::Capture).build();
+    let p = paned.clone();
+    click.connect_pressed(move |g, n, x, y| {
+        let along = if p.orientation() == gtk::Orientation::Horizontal { x } else { y };
+        let pos = p.position();
+        if n != 2 || (along - pos as f64).abs() > 10.0 {
+            return; // not on the bar: let the children have the click
+        }
+        g.set_state(gtk::EventSequenceState::Claimed);
+        let max = p.max_position();
+        let collapsed = if end { max - pos <= 12 } else { pos <= 12 };
+        if collapsed {
+            let back = saved.get();
+            p.set_position(if back > 12 && back < max - 12 { back } else if end { max * 3 / 4 } else { max / 3 });
+        } else {
+            saved.set(pos);
+            p.set_position(if end { max } else { 0 });
+        }
+    });
+    paned.add_controller(click);
 }
 
 /// A later launch (an agent's odiagramador:// link, or the user starting the app again) reuses this window.
@@ -259,6 +290,14 @@ fn build_ui(app: &adw::Application, args: &[String]) {
     editor.set_monospace(true);
     editor.set_top_margin(6);
     editor.add_css_class("odg-editor");
+    let split_css = gtk::CssProvider::new();
+    split_css.load_from_string(
+        "paned.odg-split.horizontal > separator { min-width: 9px; background-image: -gtk-icontheme(\"view-more-symbolic\"); background-repeat: no-repeat; background-position: center; background-size: 12px 12px; }\n\
+         paned.odg-split.vertical > separator { min-height: 9px; background-image: -gtk-icontheme(\"view-more-horizontal-symbolic\"); background-repeat: no-repeat; background-position: center; background-size: 12px 12px; }",
+    );
+    if let Some(display) = gdk::Display::default() {
+        gtk::style_context_add_provider_for_display(&display, &split_css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+    }
     let editor_css = gtk::CssProvider::new();
     if let Some(display) = gdk::Display::default() {
         gtk::style_context_add_provider_for_display(&display, &editor_css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -310,9 +349,19 @@ fn build_ui(app: &adw::Application, args: &[String]) {
     fb_box.append(&gtk::ScrolledWindow::builder().child(&feedback).vexpand(true).build());
     fb_box.append(&fb_row);
     fb_box.append(&context_expander);
-    notebook.append_page(&gtk::ScrolledWindow::builder().child(&problems).build(), Some(&gtk::Label::new(None)));
-    notebook.append_page(&fb_box, Some(&gtk::Label::new(None)));
-    notebook.append_page(&gtk::ScrolledWindow::builder().child(&activity).build(), Some(&gtk::Label::new(None)));
+    // each page starts with one line saying what it is for
+    let tab_help: Vec<gtk::Label> = (0..3)
+        .map(|_| gtk::Label::builder().xalign(0.0).wrap(true).css_classes(["dim-label", "caption"]).margin_start(8).margin_end(8).margin_top(4).margin_bottom(4).build())
+        .collect();
+    let page = |help: &gtk::Label, content: &gtk::Widget| {
+        let b = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        b.append(help);
+        b.append(content);
+        b
+    };
+    notebook.append_page(&page(&tab_help[0], gtk::ScrolledWindow::builder().child(&problems).vexpand(true).build().upcast_ref()), Some(&gtk::Label::new(None)));
+    notebook.append_page(&page(&tab_help[1], fb_box.upcast_ref()), Some(&gtk::Label::new(None)));
+    notebook.append_page(&page(&tab_help[2], gtk::ScrolledWindow::builder().child(&activity).vexpand(true).build().upcast_ref()), Some(&gtk::Label::new(None)));
     let status = gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).css_classes(["dim-label", "caption"]).margin_start(8).build();
     let bottom = gtk::Box::new(gtk::Orientation::Vertical, 0);
     bottom.append(&status);
@@ -320,6 +369,9 @@ fn build_ui(app: &adw::Application, args: &[String]) {
 
     let vpaned = gtk::Paned::builder().orientation(gtk::Orientation::Vertical).start_child(&hpaned).end_child(&bottom).position(470).build();
     let main_paned = gtk::Paned::builder().orientation(gtk::Orientation::Horizontal).start_child(&sidebar).end_child(&vpaned).position(230).build();
+    // double-click a bar to collapse / restore the code (start of hpaned) or the bottom panel (end of vpaned)
+    make_collapsible(&hpaned, false);
+    make_collapsible(&vpaned, true);
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.append(&header);
@@ -341,6 +393,7 @@ fn build_ui(app: &adw::Application, args: &[String]) {
         notebook,
         feedback_entry,
         feedback_button,
+        tab_help,
         context_expander,
         context_view,
         context_include,
@@ -439,6 +492,11 @@ fn apply_strings(ui: &Ui) {
     for (i, key) in ["ui-problems", "ui-feedback", "ui-activity"].iter().enumerate() {
         if let Some(page) = ui.notebook.nth_page(Some(i as u32)) {
             ui.notebook.set_tab_label_text(&page, &s.t(key));
+            let help = s.t(&format!("{key}-help"));
+            ui.tab_help[i].set_label(&help);
+            if let Some(label) = ui.notebook.tab_label(&page) {
+                label.set_tooltip_text(Some(&help));
+            }
         }
     }
     let (u1, u2) = (ui.clone(), ui.clone());
@@ -631,6 +689,14 @@ fn on_viewer_message(ui: &Ui, msg: Value) {
             s.view_visible = msg["visible_elements"].as_array().map(|v| v.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
             s.presence_at = 0; // tell agents on the next poll
         }
+        // undo / redo in the viewer: apply and save like any edit
+        "set-source" => {
+            if let Some(src) = msg["source"].as_str().map(str::to_string) {
+                apply_layout_edit(ui, move |_| Ok(src));
+            }
+        }
+        // view mode: the source can be read and selected, not typed into
+        "edit-mode" => ui.editor.set_editable(msg["editing"].as_bool().unwrap_or(true)),
         "answer" => {
             let (Some(id), Some(text)) = (msg["question_id"].as_str(), msg["text"].as_str()) else { return };
             if let Some(ws) = &ui.state.borrow().ws {
@@ -714,7 +780,8 @@ fn render(ui: &Ui) {
         send(ui, json!({"op": "process", "id": 0, "source": ""}));
         return;
     }
-    send(ui, json!({"op": "process", "id": seq, "source": text, "theme": if dark { "dark" } else { "default" }, "png": true, "scale": 2, "font": font}));
+    let doc = ui.state.borrow().selected.clone().unwrap_or_default();
+    send(ui, json!({"op": "process", "id": seq, "source": text, "doc": doc, "theme": if dark { "dark" } else { "default" }, "png": true, "scale": 2, "font": font}));
 }
 
 fn render_finished(ui: &Ui, id: u64, result: Value) {

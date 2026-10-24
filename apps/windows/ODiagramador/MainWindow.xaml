@@ -135,13 +135,13 @@
             </DockPanel>
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" />
 
-            <Grid Grid.Column="2">
+            <Grid Grid.Column="2" x:Name="RightGrid">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="3*" MinHeight="200" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" MinHeight="120" />
                 </Grid.RowDefinitions>
-                <Grid Grid.Row="0">
+                <Grid Grid.Row="0" x:Name="EditorGrid">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="2*" MinWidth="220" />
                         <ColumnDefinition Width="Auto" />
@@ -153,12 +153,46 @@
                         <ae:TextEditor x:Name="Editor" FontFamily="Cascadia Mono, Consolas" FontSize="13"
                                        ShowLineNumbers="True" WordWrap="False" TextChanged="OnSourceChanged" />
                     </DockPanel>
-                    <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" />
+                    <!-- drag to resize, double-click to collapse / restore the code -->
+                    <GridSplitter x:Name="CodeSplitter" Grid.Column="1" Width="9" HorizontalAlignment="Stretch" ResizeBehavior="PreviousAndNext"
+                                  MouseDoubleClick="OnCodeSplitterDoubleClick">
+                        <GridSplitter.Template>
+                            <ControlTemplate TargetType="GridSplitter">
+                                <Grid Background="Transparent">
+                                    <Rectangle Width="1" Fill="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" />
+                                    <Border Width="9" Height="28" CornerRadius="3" BorderThickness="1" VerticalAlignment="Center"
+                                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
+                                        <TextBlock x:Name="CodeChevron" Text="&#xE76B;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="8"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+                                    </Border>
+                                </Grid>
+                            </ControlTemplate>
+                        </GridSplitter.Template>
+                    </GridSplitter>
                     <wv2:WebView2 x:Name="Viewer" Grid.Column="2" />
                 </Grid>
-                <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch" />
+                <!-- drag to resize, double-click to collapse / restore the bottom panel -->
+                <GridSplitter x:Name="BottomSplitter" Grid.Row="1" Height="9" HorizontalAlignment="Stretch" ResizeBehavior="PreviousAndNext"
+                              MouseDoubleClick="OnBottomSplitterDoubleClick">
+                    <GridSplitter.Template>
+                        <ControlTemplate TargetType="GridSplitter">
+                            <Grid Background="Transparent">
+                                <Rectangle Height="1" Fill="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" />
+                                <Border Width="28" Height="9" CornerRadius="3" BorderThickness="1" HorizontalAlignment="Center"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
+                                    <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="8"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+                                </Border>
+                            </Grid>
+                        </ControlTemplate>
+                    </GridSplitter.Template>
+                </GridSplitter>
                 <TabControl Grid.Row="2" x:Name="Tabs">
                     <TabItem x:Name="ProblemsTab">
+                        <DockPanel>
+                            <!-- what this tab is for -->
+                            <TextBlock x:Name="ProblemsHelp" DockPanel.Dock="Top" Margin="6,4" TextWrapping="Wrap" FontSize="11"
+                                       Foreground="{StaticResource MutedBrush}" />
                         <ListBox x:Name="ProblemList" BorderThickness="0" SelectionChanged="OnProblemSelected">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
@@ -173,8 +207,13 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+                        </DockPanel>
                     </TabItem>
                     <TabItem x:Name="FeedbackTab">
+                        <DockPanel>
+                            <!-- what this tab is for -->
+                            <TextBlock x:Name="FeedbackHelp" DockPanel.Dock="Top" Margin="6,4" TextWrapping="Wrap" FontSize="11"
+                                       Foreground="{StaticResource MutedBrush}" />
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Bottom" Margin="4">
                                 <DockPanel>
@@ -216,8 +255,13 @@
                                 </ListBox.ItemTemplate>
                             </ListBox>
                         </DockPanel>
+                        </DockPanel>
                     </TabItem>
                     <TabItem x:Name="ActivityTab">
+                        <DockPanel>
+                            <!-- what this tab is for -->
+                            <TextBlock x:Name="ActivityHelp" DockPanel.Dock="Top" Margin="6,4" TextWrapping="Wrap" FontSize="11"
+                                       Foreground="{StaticResource MutedBrush}" />
                         <ListBox x:Name="ActivityList" BorderThickness="0" FontFamily="Consolas">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
@@ -229,6 +273,7 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+                        </DockPanel>
                     </TabItem>
                 </TabControl>
             </Grid>

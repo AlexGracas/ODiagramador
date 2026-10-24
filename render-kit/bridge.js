@@ -52,6 +52,7 @@
 
   // ---------------------------------------------------------------- transport
   function post(msg) {
+    if (msg && /^(construct|edit|move|layout-mode|reset-positions)$/.test(msg.op) && typeof history === "object") history.breakNext = true;
     var s = JSON.stringify(msg);
     try {
       if (window.ipc && typeof window.ipc.postMessage === "function") return window.ipc.postMessage(s); // wry
@@ -526,6 +527,7 @@
       mermaid_version: (window.mermaid && mermaid.version) || null, duration_ms: 0
     };
     if (window.odgReady) await window.odgReady; // external diagrams (ZenUML) registered
+    if (mode === "viewer") recordHistory(req.doc, source);
     var dirs = parseDirectives(source);
     var layoutName = LAYOUTS[dirs.mode] || null;
     // ELK (and dragging / exact positions) only for graph diagrams; every other type keeps Mermaid's own layout
@@ -627,6 +629,8 @@
 
   function applyTransform() {
     stage.style.transform = "translate(" + view.x + "px," + view.y + "px) scale(" + view.scale + ")";
+    // arrow click strips stay ~16 screen px wide at any zoom
+    stage.style.setProperty("--odg-hit", (16 / (view.scale || 1)).toFixed(2) + "px");
     var label = document.getElementById("zoom-label");
     if (label) label.textContent = Math.round(view.scale * 100) + "%";
     reportView();
@@ -687,6 +691,7 @@
     document.getElementById("banner").hidden = true;
     document.getElementById("empty").hidden = true;
     document.getElementById("toolbar").hidden = false;
+    document.getElementById("modebar").hidden = false;
     stage.innerHTML = "";
     stage.appendChild(svg);
     var firstTime = !view.svg;
@@ -702,10 +707,28 @@
     } else {
       applyTransform();
     }
+    addEdgeHitAreas(svg);
     if (spotlight.pending) applySpotlight();
     else restoreSpotlight();
     if (agentView.pending) applyView();
     if (agentSelect.pending) applySelect();
+  }
+
+  /** Arrows are 1–2 px wide: give each an invisible ~14 px strip along its path so a click near it selects it. */
+  function addEdgeHitAreas(svg) {
+    var NS = "http://www.w3.org/2000/svg";
+    var paths = svg.querySelectorAll('path[data-et="edge"], path.flowchart-link[data-id], path[data-id][marker-end]');
+    for (var i = 0; i < paths.length; i++) {
+      var p = paths[i];
+      if (p.classList.contains("odg-hit") || !p.getAttribute("d")) continue;
+      var hit = document.createElementNS(NS, "path");
+      hit.setAttribute("d", p.getAttribute("d"));
+      if (p.getAttribute("transform")) hit.setAttribute("transform", p.getAttribute("transform"));
+      hit.setAttribute("class", "odg-hit");
+      hit.setAttribute("data-id", p.getAttribute("data-id"));
+      hit.setAttribute("data-et", "edge");
+      p.parentNode.insertBefore(hit, p.nextSibling);
+    }
   }
 
   function showError(err) {
@@ -720,6 +743,7 @@
     stage.innerHTML = "";
     view.svg = null;
     document.getElementById("toolbar").hidden = true;
+    document.getElementById("modebar").hidden = true;
     document.getElementById("banner").hidden = true;
     var empty = document.getElementById("empty");
     empty.textContent = strings.empty;
@@ -788,6 +812,70 @@
     }
   }
 
+  // ---- edit / view mode: view mode shows and selects only (no palette, inspector, dragging, editor typing)
+  var editing = true;
+
+  function readStoredMode() {
+    try { return localStorage.getItem("odg.mode") !== "view"; } catch (e) { return true; }
+  }
+
+  function setEditing(on, user) {
+    editing = !!on;
+    document.body.classList.toggle("view-mode", !editing);
+    document.getElementById("mode-edit").setAttribute("aria-checked", editing ? "true" : "false");
+    document.getElementById("mode-view").setAttribute("aria-checked", editing ? "false" : "true");
+    if (!editing && window.odgPalette && typeof window.odgPalette.close === "function") window.odgPalette.close();
+    document.body.classList.toggle("can-drag", editing && view.graph && (view.layoutMode === "elk-interactive" || view.layoutMode === "exact"));
+    if (user) { try { localStorage.setItem("odg.mode", editing ? "edit" : "view"); } catch (e) { /* private storage */ } }
+    post({ op: "edit-mode", editing: editing });
+    if (view.svg && view.fitted) fit();
+  }
+
+  // ---- undo / redo: every version of the open diagram the viewer drew (typing in bursts, palette, inspector,
+  // dragging, agent edits); undo/redo hands a version back to the host, which saves it like any edit
+  var history = { doc: null, stack: [], index: -1, at: 0, breakNext: false };
+
+  function recordHistory(doc, source) {
+    var d = doc || "";
+    if (d !== history.doc || !source) {
+      history = { doc: d, stack: source ? [source] : [], index: source ? 0 : -1, at: Date.now(), breakNext: false };
+      updateHistoryButtons();
+      return;
+    }
+    if (source === history.stack[history.index]) return; // undo / redo coming back, or a re-render
+    history.stack = history.stack.slice(0, history.index + 1);
+    var now = Date.now();
+    // typing arrives as many renders: one step per burst, but actions always get their own step
+    if (!history.breakNext && history.stack.length > 1 && now - history.at < 1200) history.stack[history.index] = source;
+    else history.stack.push(source);
+    if (history.stack.length > 200) history.stack.shift();
+    history.index = history.stack.length - 1;
+    history.at = now;
+    history.breakNext = false;
+    updateHistoryButtons();
+  }
+
+  function updateHistoryButtons() {
+    document.getElementById("undo-btn").disabled = history.index <= 0;
+    document.getElementById("redo-btn").disabled = history.index < 0 || history.index >= history.stack.length - 1;
+  }
+
+  function undo() {
+    if (!editing || history.index <= 0) return;
+    history.index--;
+    history.breakNext = true;
+    updateHistoryButtons();
+    post({ op: "set-source", source: history.stack[history.index], reason: "undo" });
+  }
+
+  function redo() {
+    if (!editing || history.index >= history.stack.length - 1) return;
+    history.index++;
+    history.breakNext = true;
+    updateHistoryButtons();
+    post({ op: "set-source", source: history.stack[history.index], reason: "redo" });
+  }
+
   // ---- layout controls (shared by every desktop app)
   var layoutSelect = document.getElementById("layout-select");
   var resetButton = document.getElementById("reset-positions");
@@ -799,7 +887,7 @@
     layoutBox.hidden = !view.graph;
     if (layoutSelect.querySelector('option[value="' + view.layoutMode + '"]')) layoutSelect.value = view.layoutMode;
     resetButton.disabled = view.layoutMode === "auto" || view.layoutMode === "elk";
-    document.body.classList.toggle("can-drag", view.graph && (view.layoutMode === "elk-interactive" || view.layoutMode === "exact"));
+    document.body.classList.toggle("can-drag", editing && view.graph && (view.layoutMode === "elk-interactive" || view.layoutMode === "exact"));
   }
 
   function nodeCentre(el) {
@@ -820,7 +908,7 @@
       if (e.button !== 0) return;
       // dragging a node moves it only in the drag-enabled layouts (the menu says "drag"); a plain
       // click must never rewrite the file, so auto/ELK layouts just select and pan
-      var draggable = view.graph && (view.layoutMode === "elk-interactive" || view.layoutMode === "exact");
+      var draggable = editing && view.graph && (view.layoutMode === "elk-interactive" || view.layoutMode === "exact");
       var node = draggable && e.target.closest && e.target.closest("g.node[data-id]");
       if (node) {
         drag = { node: node, id: node.getAttribute("data-id"), centre: nodeCentre(node), transform: node.getAttribute("transform") || "", x: e.clientX, y: e.clientY, moved: false };
@@ -868,7 +956,7 @@
         highlight(node.getAttribute("data-id"));
         post({ op: "select", element_id: node.getAttribute("data-id") });
       }
-      if (node && window.odgPalette) window.odgPalette.inspect(node.getAttribute("data-id"), isEdge, e.clientX, e.clientY);
+      if (node && editing && window.odgPalette) window.odgPalette.inspect(node.getAttribute("data-id"), isEdge, e.clientX, e.clientY);
     });
     viewport.addEventListener("wheel", function (e) {
       e.preventDefault();
@@ -888,6 +976,23 @@
       else if (act === "fit") fit();
     });
     window.addEventListener("resize", function () { if (view.svg && view.fitted) fit(); });
+    document.getElementById("modebar").addEventListener("click", function (e) {
+      var b = e.target.closest && e.target.closest("button");
+      if (!b || b.disabled) return;
+      if (b.getAttribute("data-mode")) setEditing(b.getAttribute("data-mode") === "edit", true);
+      else if (b.getAttribute("data-act") === "undo") undo();
+      else if (b.getAttribute("data-act") === "redo") redo();
+    });
+    // Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z, Ctrl+Y in the preview (form fields keep their own undo)
+    document.addEventListener("keydown", function (e) {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      var tag = (e.target && e.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || (e.target && e.target.isContentEditable)) return;
+      var k = String(e.key).toLowerCase();
+      if (k === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if ((k === "z" && e.shiftKey) || (k === "y" && e.ctrlKey)) { e.preventDefault(); redo(); }
+    });
+    setEditing(readStoredMode(), false);
     showEmpty();
   }
 
@@ -1202,6 +1307,17 @@
       });
       if (strings["ui-reset-positions"]) resetButton.title = strings["ui-reset-positions"];
       if (strings["ui-layout"]) layoutSelect.title = strings["ui-layout"];
+      var mk = function (id, key, tip) {
+        var b = document.getElementById(id);
+        if (!b) return;
+        var span = b.querySelector("span");
+        if (span && strings[key]) span.textContent = strings[key];
+        if (strings[tip || key]) b.title = strings[tip || key];
+      };
+      mk("mode-edit", "ui-mode-edit", "ui-mode-edit-tip");
+      mk("mode-view", "ui-mode-view", "ui-mode-view-tip");
+      mk("undo-btn", "ui-undo", "ui-undo-tip");
+      mk("redo-btn", "ui-redo", "ui-redo-tip");
       if (window.odgPalette) window.odgPalette.strings(strings);
       if (!view.svg) document.getElementById("empty").textContent = strings.empty;
       return;
@@ -1212,4 +1328,5 @@
   window.odg = { handle: handle, post: post, version: 1 };
   if (mode === "viewer") setupViewer();
   post({ op: "ready", mode: mode, mermaid_version: (window.mermaid && mermaid.version) || null });
+  if (mode === "viewer") post({ op: "edit-mode", editing: editing }); // the host makes its editor read-only in view mode
 })();

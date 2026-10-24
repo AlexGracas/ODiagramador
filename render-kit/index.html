@@ -19,6 +19,25 @@
 <div id="ctor-form" hidden></div>
 <div id="banner" hidden></div>
 <div id="empty" hidden></div>
+<!-- edit / view mode and undo / redo (shared by every desktop app) -->
+<div id="modebar" hidden>
+  <div class="seg" role="radiogroup">
+    <button id="mode-edit" data-mode="edit" role="radio" aria-checked="true">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.3 1.7a1.6 1.6 0 0 1 2.3 0l.7.7a1.6 1.6 0 0 1 0 2.3L5.9 13.1l-3.4.9.9-3.4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      <span>Edit</span>
+    </button>
+    <button id="mode-view" data-mode="view" role="radio" aria-checked="false">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>
+      <span>View</span>
+    </button>
+  </div>
+  <button id="undo-btn" data-act="undo" title="Undo" disabled>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5 2 7l3.5 3.5M2.5 7h7a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button id="redo-btn" data-act="redo" title="Redo" disabled>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5 14 7l-3.5 3.5M13.5 7h-7a4 4 0 0 0 0 8H9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+</div>
 <div id="toolbar" hidden>
   <button data-act="zoom-out" title="-">&#8722;</button>
   <span id="zoom-label">100%</span>

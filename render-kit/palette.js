@@ -412,7 +412,15 @@
     return { type: "node", id: id, label: node.label || id, shape: node.shape, group: group };
   }
 
+  // a click anywhere outside the form closes it, like Cancel
+  document.addEventListener("mousedown", function (e) {
+    if (form.hidden || !state.open) return;
+    if (form.contains(e.target)) return;
+    closeForm();
+  }, true);
+
   window.odgPalette = {
+    close: function () { closeForm(); },
     /** Opens the inspector for a clicked element (bridge.js calls this). */
     inspect: function (id, isEdge, x, y) {
       inspect(targetFor(id, isEdge), x, y);

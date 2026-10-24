@@ -277,3 +277,45 @@ button:disabled { opacity: 0.5; cursor: default; }
 /* center_on_element: brief pulse so the human spots the element */
 .odg-pulse { --glow: var(--agent); animation: odg-pulse 0.8s ease-in-out 3; }
 .odg-pulse rect, .odg-pulse polygon, .odg-pulse circle, .odg-pulse ellipse, .odg-pulse path { stroke: var(--agent) !important; stroke-width: 3px !important; }
+
+/* edit / view mode and undo / redo */
+#modebar {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  z-index: 3;
+}
+#modebar[hidden] { display: none; }
+#modebar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  min-width: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+#modebar svg { width: 15px; height: 15px; flex: none; }
+#modebar .seg { display: inline-flex; margin-right: 4px; }
+#modebar .seg button { border-radius: 0; }
+#modebar .seg button:first-child { border-radius: 6px 0 0 6px; }
+#modebar .seg button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+#modebar .seg button[aria-checked="true"] { background: var(--info); border-color: var(--info); color: #fff; }
+#modebar button:disabled { opacity: 0.35; cursor: default; }
+/* view mode: nothing that edits */
+body.view-mode #palette, body.view-mode #ctor-form, body.view-mode #layout-box, body.view-mode #undo-btn, body.view-mode #redo-btn { display: none !important; }
+
+/* invisible, wider click target along each arrow */
+.odg-hit { fill: none; stroke: transparent; stroke-width: var(--odg-hit, 14px); pointer-events: stroke; cursor: pointer; }
