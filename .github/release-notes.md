@@ -28,6 +28,14 @@ claude mcp add odiagramador -- /Applications/ODiagramador.app/Contents/MacOS/odg
 
 No Windows o caminho é `...\ODiagramador\odg.exe`. Guia completo: [docs/AGENTS.md](https://github.com/AlexGracas/ODiagramador/blob/main/docs/AGENTS.md).
 
+## Novidades da 0.6.1
+- **`select_element`** (nova ferramenta MCP): o agente seleciona um elemento como se você tivesse clicado nele (contorno, inspetor, linha do código); `get_viewer_status` passa a informá-lo como selecionado.
+- **Windows: atualização** — a conferência final agora compara os arquivos instalados com o pacote (antes ela lia a versão da cópia já carregada e acusava falha numa atualização que tinha funcionado).
+- **Windows: log** registra o que cada pedido do agente fez (diagrama aberto, zoom, elemento, centro) e os diagramas/elementos que você escolhe.
+- Windows: o arquivo de presença do visualizador não falha mais quando outro programa (ex.: OneDrive) o mantém aberto.
+
+> Atualizando da 0.6.0 no Windows: a conferência antiga ainda pode mostrar um erro no fim; os arquivos são instalados mesmo assim — feche e abra o app.
+
 ## Novidades da 0.6.0
 - **Validação de diagramas de arquitetura**: diagramas de blocos (`block`) agora são analisados (blocos e setas), e há novos avisos para todos os diagramas com setas: seta passando por cima de outro elemento, seta curta demais para a ponta (aparece invertida), rótulo por cima de caixas ou de outro rótulo, e **cruzamentos de setas** (com a contagem no relatório, para comparar versões).
 - **Ordem das camadas no ELK**: `arrange_diagram` aceita camadas numeradas (`layers: [{id, layer: 0}, …]`, também para subgrafos), mantendo a ordem mesmo com setas que voltam.
