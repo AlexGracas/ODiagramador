@@ -80,9 +80,11 @@ impl Kind {
 
     /// First example of the official docs: a valid starting point for a new diagram.
     pub fn example(&self) -> Option<String> {
-        let start = self.reference.find("```mermaid\n")? + "```mermaid\n".len();
-        let end = self.reference[start..].find("\n```")?;
-        Some(format!("{}\n", &self.reference[start..start + end]))
+        // a Windows checkout may turn the embedded docs into CRLF
+        let doc = self.reference.replace("\r\n", "\n");
+        let start = doc.find("```mermaid\n")? + "```mermaid\n".len();
+        let end = doc[start..].find("\n```")?;
+        Some(format!("{}\n", &doc[start..start + end]))
     }
 }
 
@@ -116,5 +118,11 @@ mod tests {
         assert_eq!(find("erDiagram").unwrap().id, "er");
         assert_eq!(find("railroadEbnf").unwrap().id, "railroad");
         assert!(find("nothing").is_none());
+    }
+
+    #[test]
+    fn example_survives_crlf_docs() {
+        let k = Kind { id: "x", en: "", pt: "", aliases: &[], graph: false, reference: "# X\r\n```mermaid\r\npie\r\n  \"a\": 1\r\n```\r\n" };
+        assert_eq!(k.example().as_deref(), Some("pie\n  \"a\": 1\n"));
     }
 }

@@ -1,0 +1,6 @@
+# Text embedded in the binaries (include_str!) and parsed by line: keep LF on every platform
+*.md text eol=lf
+*.ftl text eol=lf
+*.mmd text eol=lf
+*.svg text eol=lf
+render-kit/** text eol=lf
