@@ -107,6 +107,10 @@ public partial class MainWindow : Window
         BuildMcpMenu();
         DiagramsHeader.Text = T("ui-diagrams").ToUpperInvariant();
         LocalizeListOptions();
+        CodeRailText.Text = T("ui-source").ToUpperInvariant();
+        CodeRail.ToolTip = T("ui-split-code-show");
+        BottomRailText.Text = T("ui-bottom-panel").ToUpperInvariant();
+        BottomRail.ToolTip = T("ui-split-bottom-show");
         ProblemsTab.Header = $"{T("ui-problems")} ({_report?.Problems.Count ?? 0})";
         FeedbackTab.Header = T("ui-feedback");
         ActivityTab.Header = T("ui-activity");
@@ -975,38 +979,61 @@ public partial class MainWindow : Window
     // ---- double-click a splitter: collapse / restore the code or the bottom panel (sizes come back as they were)
     private GridLength _codeWidth = new(2, GridUnitType.Star), _bottomHeight = new(1, GridUnitType.Star);
 
+    private const double RailSize = 24;
+
     private void OnCodeSplitterDoubleClick(object sender, MouseButtonEventArgs e)
     {
+        SetCodeCollapsed(CodeRail.Visibility != Visibility.Visible);
+        e.Handled = true;
+    }
+
+    private void OnCodeRailClick(object sender, RoutedEventArgs e) => SetCodeCollapsed(false);
+
+    /// A collapsed code pane leaves a labelled strip ("CODE ›") instead of a bare bar next to the sidebar's.
+    private void SetCodeCollapsed(bool collapse)
+    {
         var col = EditorGrid.ColumnDefinitions[0];
-        if (col.ActualWidth > 12)
+        if (collapse)
         {
             _codeWidth = col.Width;
             col.MinWidth = 0;
-            col.Width = new GridLength(0);
+            col.Width = new GridLength(RailSize);
         }
         else
         {
             col.Width = _codeWidth.Value > 0 ? _codeWidth : new GridLength(2, GridUnitType.Star);
             col.MinWidth = 220;
         }
-        e.Handled = true;
+        CodePane.Visibility = collapse ? Visibility.Collapsed : Visibility.Visible;
+        CodeSplitter.Visibility = collapse ? Visibility.Collapsed : Visibility.Visible;
+        CodeRail.Visibility = collapse ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnBottomSplitterDoubleClick(object sender, MouseButtonEventArgs e)
     {
+        SetBottomCollapsed(BottomRail.Visibility != Visibility.Visible);
+        e.Handled = true;
+    }
+
+    private void OnBottomRailClick(object sender, RoutedEventArgs e) => SetBottomCollapsed(false);
+
+    private void SetBottomCollapsed(bool collapse)
+    {
         var row = RightGrid.RowDefinitions[2];
-        if (row.ActualHeight > 12)
+        if (collapse)
         {
             _bottomHeight = row.Height;
             row.MinHeight = 0;
-            row.Height = new GridLength(0);
+            row.Height = new GridLength(RailSize);
         }
         else
         {
             row.Height = _bottomHeight.Value > 0 ? _bottomHeight : new GridLength(1, GridUnitType.Star);
             row.MinHeight = 120;
         }
-        e.Handled = true;
+        Tabs.Visibility = collapse ? Visibility.Collapsed : Visibility.Visible;
+        BottomSplitter.Visibility = collapse ? Visibility.Collapsed : Visibility.Visible;
+        BottomRail.Visibility = collapse ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ---- context sent with a comment: regenerated on diagram / selection changes unless the human edited it

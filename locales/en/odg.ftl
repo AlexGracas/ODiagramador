@@ -388,3 +388,6 @@ ui-sort-name = Name (A–Z)
 ui-sort-date = Date (newest)
 ui-root-folder = Root folder
 ui-kind-unknown = Unrecognised type
+ui-bottom-panel = Problems · Comments · Activity
+ui-split-code-show = The code is collapsed — click (or drag) to show it
+ui-split-bottom-show = The bottom panel is collapsed — click (or drag) to show it

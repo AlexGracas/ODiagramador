@@ -181,12 +181,23 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="3*" MinWidth="280" />
                     </Grid.ColumnDefinitions>
-                    <DockPanel Grid.Column="0">
+                    <DockPanel Grid.Column="0" x:Name="CodePane">
                         <TextBlock x:Name="AgentBadge" DockPanel.Dock="Top" HorizontalAlignment="Right" Margin="6,2"
                                    Foreground="#8250DF" Visibility="Collapsed" />
                         <ae:TextEditor x:Name="Editor" FontFamily="Cascadia Mono, Consolas" FontSize="13"
                                        ShowLineNumbers="True" WordWrap="False" TextChanged="OnSourceChanged" />
                     </DockPanel>
+                    <!-- strip left by the collapsed code: its name, click to bring it back -->
+                    <Button x:Name="CodeRail" Grid.Column="0" Visibility="Collapsed" Click="OnCodeRailClick" Cursor="Hand"
+                            BorderThickness="0,0,1,0" Padding="0,10,0,0" VerticalContentAlignment="Top" HorizontalContentAlignment="Center"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                        <StackPanel>
+                            <TextBlock Text="&#xE76C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10" HorizontalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+                            <TextBlock x:Name="CodeRailText" Margin="0,8,0,0" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}">
+                                <TextBlock.LayoutTransform><RotateTransform Angle="90" /></TextBlock.LayoutTransform>
+                            </TextBlock>
+                        </StackPanel>
+                    </Button>
                     <!-- drag to resize, double-click to collapse / restore the code -->
                     <GridSplitter x:Name="CodeSplitter" Grid.Column="1" Width="9" HorizontalAlignment="Stretch" ResizeBehavior="PreviousAndNext"
                                   MouseDoubleClick="OnCodeSplitterDoubleClick">
@@ -221,6 +232,15 @@
                         </ControlTemplate>
                     </GridSplitter.Template>
                 </GridSplitter>
+                <!-- strip left by the collapsed bottom panel: its name, click to bring it back -->
+                <Button x:Name="BottomRail" Grid.Row="2" Visibility="Collapsed" Click="OnBottomRailClick" Cursor="Hand"
+                        BorderThickness="0,1,0,0" Padding="10,0,0,0" HorizontalContentAlignment="Left" VerticalContentAlignment="Center"
+                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE70E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+                        <TextBlock x:Name="BottomRailText" Margin="8,0,0,0" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}" />
+                    </StackPanel>
+                </Button>
                 <TabControl Grid.Row="2" x:Name="Tabs">
                     <TabItem x:Name="ProblemsTab">
                         <DockPanel>

@@ -100,6 +100,9 @@ struct Ui {
     feedback_entry: gtk::Entry,
     feedback_button: gtk::Button,
     tab_help: Vec<gtk::Label>,
+    /// strips left by the collapsed code / bottom panel (button, name label)
+    code_rail: (gtk::Button, gtk::Label),
+    bottom_rail: (gtk::Button, gtk::Label),
     context_expander: gtk::Expander,
     context_view: gtk::TextView,
     context_include: gtk::CheckButton,
@@ -140,32 +143,75 @@ fn main() -> glib::ExitCode {
 
 /// Double-click on the paned's bar collapses one side (`end`: the end child, else the start child) and
 /// restores it to its previous size; the bar shows a grip icon and is wider so it is easy to hit.
-fn make_collapsible(paned: &gtk::Paned, end: bool) {
+/// Thickness of the strip a collapsed pane leaves.
+const RAIL: i32 = 26;
+
+/// Double-click the bar to collapse / restore one child of `paned` (the start one, or the end one). A
+/// collapsed child leaves a labelled strip (its name and an arrow) that brings it back when clicked, so it
+/// is clear what is hidden. Returns the strip and its label, filled with the localised name later.
+fn make_collapsible(paned: &gtk::Paned, end: bool) -> (gtk::Button, gtk::Label) {
     paned.set_wide_handle(true);
     paned.add_css_class("odg-split");
     paned.set_shrink_start_child(true);
     paned.set_shrink_end_child(true);
-    let saved = Rc::new(std::cell::Cell::new(0i32));
+    let horizontal = paned.orientation() == gtk::Orientation::Horizontal;
+    let content = if end { paned.end_child() } else { paned.start_child() }.expect("paned child");
+    // strip: arrow + name (letters stacked when the strip is vertical)
+    let label = gtk::Label::builder().css_classes(["caption-heading", "dim-label"]).justify(gtk::Justification::Center).build();
+    let arrow = gtk::Image::from_icon_name(match (horizontal, end) {
+        (true, false) => "go-next-symbolic",
+        (true, true) => "go-previous-symbolic",
+        (false, true) => "go-up-symbolic",
+        (false, false) => "go-down-symbolic",
+    });
+    let inner = gtk::Box::new(if horizontal { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal }, 8);
+    inner.append(&arrow);
+    inner.append(&label);
+    inner.set_valign(if horizontal { gtk::Align::Start } else { gtk::Align::Center });
+    inner.set_halign(if horizontal { gtk::Align::Center } else { gtk::Align::Start });
+    inner.set_margin_top(if horizontal { 10 } else { 0 });
+    inner.set_margin_start(if horizontal { 0 } else { 10 });
+    let rail = gtk::Button::builder().child(&inner).css_classes(["flat"]).visible(false).build();
+    rail.set_cursor_from_name(Some("pointer"));
+    if horizontal { rail.set_width_request(RAIL) } else { rail.set_height_request(RAIL) }
+    let wrap = gtk::Box::new(if horizontal { gtk::Orientation::Horizontal } else { gtk::Orientation::Vertical }, 0);
+    if end { paned.set_end_child(None::<&gtk::Widget>) } else { paned.set_start_child(None::<&gtk::Widget>) }
+    content.set_hexpand(true);
+    content.set_vexpand(true);
+    wrap.append(&rail);
+    wrap.append(&content);
+    if end { paned.set_end_child(Some(&wrap)) } else { paned.set_start_child(Some(&wrap)) }
+
+    let saved = Rc::new(Cell::new(0i32));
+    let set_collapsed: Rc<dyn Fn(bool)> = {
+        let (p, rail, content, saved) = (paned.clone(), rail.clone(), content.clone(), saved.clone());
+        Rc::new(move |collapse| {
+            let max = p.max_position();
+            if collapse {
+                saved.set(p.position());
+                p.set_position(if end { max - RAIL } else { RAIL });
+            } else {
+                let back = saved.get();
+                p.set_position(if back > RAIL * 2 && back < max - RAIL * 2 { back } else if end { max * 3 / 4 } else { max / 3 });
+            }
+            content.set_visible(!collapse);
+            rail.set_visible(collapse);
+        })
+    };
+    let f = set_collapsed.clone();
+    rail.connect_clicked(move |_| f(false));
     let click = gtk::GestureClick::builder().button(1).propagation_phase(gtk::PropagationPhase::Capture).build();
-    let p = paned.clone();
+    let (p, r) = (paned.clone(), rail.clone());
     click.connect_pressed(move |g, n, x, y| {
-        let along = if p.orientation() == gtk::Orientation::Horizontal { x } else { y };
-        let pos = p.position();
-        if n != 2 || (along - pos as f64).abs() > 10.0 {
+        let along = if horizontal { x } else { y };
+        if n != 2 || (along - p.position() as f64).abs() > 10.0 {
             return; // not on the bar: let the children have the click
         }
         g.set_state(gtk::EventSequenceState::Claimed);
-        let max = p.max_position();
-        let collapsed = if end { max - pos <= 12 } else { pos <= 12 };
-        if collapsed {
-            let back = saved.get();
-            p.set_position(if back > 12 && back < max - 12 { back } else if end { max * 3 / 4 } else { max / 3 });
-        } else {
-            saved.set(pos);
-            p.set_position(if end { max } else { 0 });
-        }
+        set_collapsed(!r.is_visible());
     });
     paned.add_controller(click);
+    (rail, label)
 }
 
 /// A later launch (an agent's odiagramador:// link, or the user starting the app again) reuses this window.
@@ -384,8 +430,8 @@ fn build_ui(app: &adw::Application, args: &[String]) {
     let vpaned = gtk::Paned::builder().orientation(gtk::Orientation::Vertical).start_child(&hpaned).end_child(&bottom).position(470).build();
     let main_paned = gtk::Paned::builder().orientation(gtk::Orientation::Horizontal).start_child(&sidebar).end_child(&vpaned).position(230).build();
     // double-click a bar to collapse / restore the code (start of hpaned) or the bottom panel (end of vpaned)
-    make_collapsible(&hpaned, false);
-    make_collapsible(&vpaned, true);
+    let code_rail = make_collapsible(&hpaned, false);
+    let bottom_rail = make_collapsible(&vpaned, true);
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.append(&header);
@@ -411,6 +457,8 @@ fn build_ui(app: &adw::Application, args: &[String]) {
         feedback_entry,
         feedback_button,
         tab_help,
+        code_rail,
+        bottom_rail,
         context_expander,
         context_view,
         context_include,
@@ -540,6 +588,12 @@ fn apply_strings(ui: &Ui) {
     );
     let (group, sort) = (s.prefs.list_group.clone(), s.prefs.list_sort.clone());
     ui.group_dd.set_tooltip_text(Some(&s.t("ui-group-by")));
+    // the vertical strip stacks the letters of the code pane's name
+    let code = s.t("ui-source").to_uppercase();
+    ui.code_rail.1.set_label(&code.chars().map(String::from).collect::<Vec<_>>().join("\n"));
+    ui.code_rail.0.set_tooltip_text(Some(&s.t("ui-split-code-show")));
+    ui.bottom_rail.1.set_label(&s.t("ui-bottom-panel").to_uppercase());
+    ui.bottom_rail.0.set_tooltip_text(Some(&s.t("ui-split-bottom-show")));
     ui.sort_dd.set_tooltip_text(Some(&s.t("ui-sort-by")));
     drop(s);
     ui.list_opts_busy.set(true);

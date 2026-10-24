@@ -20,9 +20,13 @@ struct ContentView: View {
             } else {
                 // double-click a bar (or click its chevron) to collapse / restore the code or the bottom panel
                 CollapsibleSplit(axis: .vertical, collapses: .second, size: $bottomHeight, collapsed: $bottomCollapsed,
-                                 minSize: 120, minOther: 260, help: state.t("ui-split-bottom-tip")) {
+                                 minSize: 120, minOther: 260, help: state.t("ui-split-bottom-tip"),
+                                 collapsedTitle: state.t("ui-bottom-panel"), collapsedIcon: "rectangle.bottomthird.inset.filled",
+                                 collapsedHelp: state.t("ui-split-bottom-show")) {
                     CollapsibleSplit(axis: .horizontal, collapses: .first, size: $codeWidth, collapsed: $codeCollapsed,
-                                     minSize: 220, minOther: 320, help: state.t("ui-split-code-tip")) {
+                                     minSize: 220, minOther: 320, help: state.t("ui-split-code-tip"),
+                                     collapsedTitle: state.t("ui-source"), collapsedIcon: "chevron.left.forwardslash.chevron.right",
+                                     collapsedHelp: state.t("ui-split-code-show")) {
                         SourcePane()
                     } second: {
                         PreviewPane()

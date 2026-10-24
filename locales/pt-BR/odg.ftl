@@ -388,3 +388,6 @@ ui-sort-name = Nome (A–Z)
 ui-sort-date = Data (recentes)
 ui-root-folder = Pasta raiz
 ui-kind-unknown = Tipo não reconhecido
+ui-bottom-panel = Problemas · Comentários · Atividade
+ui-split-code-show = O código está recolhido — clique (ou arraste) para mostrá-lo
+ui-split-bottom-show = O painel inferior está recolhido — clique (ou arraste) para mostrá-lo
