@@ -379,7 +379,8 @@ impl Server {
                         None => "? never validated".to_string(),
                     };
                     let fb = if d.open_feedback > 0 { format!(" · 💬 {} open comment(s)", d.open_feedback) } else { String::new() };
-                    text.push_str(&format!("- {} — {st}{fb}\n", d.path));
+                    let kind = d.kind.as_deref().map(|k| format!(" ({k})")).unwrap_or_default();
+                    text.push_str(&format!("- {}{kind} — {st}{fb}\n", d.path));
                 }
                 Ok(json!({"content": [{"type": "text", "text": text}], "structuredContent": {"diagrams": list}}))
             }

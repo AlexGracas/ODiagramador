@@ -323,3 +323,54 @@ body.view-mode #undo-btn, body.view-mode #redo-btn, body.view-mode #pal-fixed .p
   background: #1f2328; color: #fff; font-size: 12px; line-height: 1.35; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
 }
 #marker-tip[hidden] { display: none; }
+
+/* renderer chip (bottom toolbar) and its help panel */
+#toolbar #renderer-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; margin-right: 4px;
+  color: var(--muted); font: inherit; font-size: 12px; white-space: nowrap;
+}
+#toolbar #renderer-chip[hidden] { display: none; }
+#toolbar #renderer-chip svg { width: 14px; height: 14px; flex: none; }
+#toolbar #renderer-chip:hover, #toolbar #renderer-chip.open { color: var(--fg); background: color-mix(in srgb, var(--info) 12%, transparent); }
+#toolbar #renderer-chip.warn { color: var(--warning); border-color: var(--warning); }
+#renderer-modal {
+  position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(0, 0, 0, 0.38);
+}
+#renderer-modal[hidden] { display: none; }
+#renderer-modal .rm-dialog {
+  display: flex; flex-direction: column; width: min(760px, 100%); max-height: 100%; box-sizing: border-box;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--fg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35); font-size: 13px; line-height: 1.45;
+}
+#renderer-modal .rm-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 8px; border-bottom: 1px solid var(--border); }
+#renderer-modal h2 { margin: 0; font-size: 16px; }
+#renderer-modal h3 { margin: 14px 0 6px; font-size: 13px; }
+#renderer-modal .rm-x { border: 0; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; padding: 2px 8px; border-radius: 6px; }
+#renderer-modal .rm-x:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+#renderer-modal .rm-body { overflow: auto; padding: 10px 16px; }
+#renderer-modal p { margin: 0 0 8px; }
+#renderer-modal .rm-intro, #renderer-modal .rm-foot { color: var(--muted); }
+#renderer-modal .rm-warn { color: var(--warning); }
+#renderer-modal .rm-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+#renderer-modal .rm-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+#renderer-modal .rm-card.active { border-color: var(--info); background: color-mix(in srgb, var(--info) 7%, transparent); }
+#renderer-modal .rm-name { font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#renderer-modal .rm-badge { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: #fff; background: var(--info); border-radius: 999px; padding: 1px 7px; }
+#renderer-modal .rm-where { margin-top: 3px; color: var(--muted); font-size: 12px; }
+#renderer-modal .rm-where b { color: var(--fg); font-weight: 600; }
+#renderer-modal .rm-what { margin-top: 4px; font-size: 12.5px; }
+#renderer-modal .rm-table-wrap { overflow-x: auto; }
+#renderer-modal .rm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+#renderer-modal .rm-table th { text-align: left; font-weight: 600; color: var(--muted); padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+#renderer-modal .rm-table td { padding: 4px 8px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); vertical-align: top; }
+#renderer-modal .rm-table tr.active td { background: color-mix(in srgb, var(--info) 8%, transparent); }
+#renderer-modal .rm-rname { font-weight: 600; white-space: nowrap; }
+#renderer-modal .rh-flag { white-space: nowrap; }
+#renderer-modal .rh-flag.yes { color: #1a7f37; }
+#renderer-modal .rh-flag.move { color: var(--info); }
+#renderer-modal .rh-flag.no { color: var(--muted); }
+:root[data-theme="dark"] #renderer-modal .rh-flag.yes { color: #3fb950; }
+#renderer-modal .rm-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--border); }
+#renderer-modal .rm-versions { color: var(--muted); font-size: 11px; }
+#renderer-modal .rm-ok { height: 28px; padding: 0 16px; border: 0; border-radius: 6px; background: var(--info); color: #fff; font: inherit; cursor: pointer; }

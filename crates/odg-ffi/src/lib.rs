@@ -135,7 +135,17 @@ pub fn invoke(method: &str, a: &Value) -> R {
         "template" => Ok(json!(odg_core::construct::template(arg(a, "kind")?, lang(a)))),
         "diagram_kinds" => to_value(odg_core::kinds::list(lang(a))),
         "syntax_help" => Ok(json!(syntax::help(opt(a, "topic").unwrap_or("overview")))),
-        "list" => to_value(ws(a)?.list().map_err(|e| e.to_string())?),
+        // each entry also carries `kind_label`, the diagram type in the UI language
+        "list" => {
+            let mut list = to_value(ws(a)?.list().map_err(|e| e.to_string())?)?;
+            for d in list.as_array_mut().into_iter().flatten() {
+                let label = d.get("kind").and_then(Value::as_str).and_then(odg_core::kinds::find).map(|k| k.label(lang(a)));
+                if let (Some(obj), Some(label)) = (d.as_object_mut(), label) {
+                    obj.insert("kind_label".into(), json!(label));
+                }
+            }
+            Ok(list)
+        }
         "read" => Ok(Value::String(ws(a)?.read(arg(a, "path")?).map_err(|e| e.to_string())?)),
         "write" => {
             let rel = ws(a)?.write(arg(a, "path")?, arg(a, "content")?, actor(a), opt(a, "client")).map_err(|e| e.to_string())?;

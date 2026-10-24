@@ -26,7 +26,7 @@
 
   <!-- shared render-kit (same files every platform loads) -->
   <ItemGroup>
-    <Content Include="$(RepoRoot)render-kit\index.html;$(RepoRoot)render-kit\bridge.js;$(RepoRoot)render-kit\palette.js;$(RepoRoot)render-kit\viewer.css">
+    <Content Include="$(RepoRoot)render-kit\index.html;$(RepoRoot)render-kit\bridge.js;$(RepoRoot)render-kit\palette.js;$(RepoRoot)render-kit\renderers.js;$(RepoRoot)render-kit\viewer.css">
       <Link>render-kit\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

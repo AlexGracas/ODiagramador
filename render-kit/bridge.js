@@ -608,7 +608,7 @@
     }
     if (mode === "viewer") {
       showSvg(svg);
-      updateLayoutControls(out.diagram_type, dirs.mode);
+      updateLayoutControls(out.diagram_type, dirs.mode, out.layout_fallback);
       if (window.odgPalette) window.odgPalette.update(out, req.source);
     }
     else host.innerHTML = "";
@@ -745,6 +745,7 @@
     document.getElementById("toolbar").hidden = true;
     document.getElementById("palette").hidden = true;
     document.getElementById("banner").hidden = true;
+    if (window.odgRenderers) window.odgRenderers.hide();
     var empty = document.getElementById("empty");
     empty.textContent = strings.empty;
     empty.hidden = false;
@@ -891,9 +892,10 @@
   var resetButton = document.getElementById("reset-positions");
   var layoutBox = document.getElementById("layout-box");
 
-  function updateLayoutControls(type, layoutMode) {
+  function updateLayoutControls(type, layoutMode, fallback) {
     view.graph = GRAPH_TYPES.test(type || "");
     view.layoutMode = layoutMode || "auto";
+    if (window.odgRenderers) window.odgRenderers.update(type, view.layoutMode, view.graph, fallback);
     layoutBox.hidden = !view.graph;
     if (layoutSelect.querySelector('option[value="' + view.layoutMode + '"]')) layoutSelect.value = view.layoutMode;
     resetButton.disabled = view.layoutMode === "auto" || view.layoutMode === "elk";
@@ -1356,6 +1358,7 @@
       mk("undo-btn", "ui-undo", "ui-undo-tip");
       mk("redo-btn", "ui-redo", "ui-redo-tip");
       if (window.odgPalette) window.odgPalette.strings(strings);
+      if (window.odgRenderers) window.odgRenderers.strings(strings);
       if (!view.svg) document.getElementById("empty").textContent = strings.empty;
       return;
     }

@@ -144,6 +144,7 @@ final class AppState: ObservableObject {
             try? Core.run("set_config", ["workspace": ws.path, "lang": code])
         }
         viewer.send(["op": "strings", "strings": strings])
+        refreshList() // diagram types in the new language
         render()
     }
 
@@ -196,7 +197,7 @@ final class AppState: ObservableObject {
     func refreshList() {
         guard let ws = workspace else { return }
         do {
-            diagrams = try Core.call("list", ["workspace": ws.path], as: [DiagramInfo].self)
+            diagrams = try Core.call("list", ["workspace": ws.path, "lang": lang], as: [DiagramInfo].self)
             for d in diagrams where lastModified[d.path] == nil { lastModified[d.path] = d.modified }
         } catch {
             errorMessage = error.localizedDescription
@@ -215,7 +216,7 @@ final class AppState: ObservableObject {
     /// Picks up changes made by agents (or any editor) on disk.
     private func poll() {
         guard let ws = workspace,
-              let list = try? Core.call("list", ["workspace": ws.path], as: [DiagramInfo].self) else { return }
+              let list = try? Core.call("list", ["workspace": ws.path, "lang": lang], as: [DiagramInfo].self) else { return }
         let changed = list.filter { lastModified[$0.path] != $0.modified }
         // a comment added or resolved (by an agent, say) changes the counts: refresh the comment list too
         let feedbackChanged = list.map(\.openFeedback) != diagrams.map(\.openFeedback)

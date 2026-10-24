@@ -69,6 +69,16 @@ pub fn find(name: &str) -> Option<&'static Kind> {
     KINDS.iter().find(|k| k.id == n).or_else(|| KINDS.iter().find(|k| k.aliases.iter().any(|a| n.starts_with(a))))
 }
 
+/// The kind a source declares in its header (after front matter, blank lines and `%%` comments/directives).
+pub fn detect(src: &str) -> Option<&'static Kind> {
+    let header = src
+        .lines()
+        .skip(crate::source::front_matter_lines(src) as usize)
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with("%%"))?;
+    find(header.split_whitespace().next()?)
+}
+
 impl Kind {
     pub fn label(&self, lang: Lang) -> &'static str {
         if lang == Lang::PtBr {
@@ -118,6 +128,14 @@ mod tests {
         assert_eq!(find("erDiagram").unwrap().id, "er");
         assert_eq!(find("railroadEbnf").unwrap().id, "railroad");
         assert!(find("nothing").is_none());
+    }
+
+    #[test]
+    fn detects_the_header_after_front_matter_and_directives() {
+        assert_eq!(detect("---\ntitle: x\n---\n%%{init: {}}%%\n\nsequenceDiagram\n A->>B: hi\n").map(|k| k.id), Some("sequence"));
+        assert_eq!(detect("stateDiagram-v2\n [*] --> A\n").map(|k| k.id), Some("state"));
+        assert_eq!(detect("graph TD\n a-->b\n").map(|k| k.id), Some("flowchart"));
+        assert!(detect("%% only a comment\n").is_none());
     }
 
     #[test]

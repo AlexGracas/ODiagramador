@@ -109,10 +109,29 @@ public record Report(string? Path, string? DiagramType, bool Valid, int ErrorCou
 
 public record DiagramStatus(bool Valid, int Errors, int Warnings, bool Stale, string Summary);
 
-public record DiagramInfo(string Path, string Name, string Engine, long Size, string Modified, DiagramStatus? Status, int OpenFeedback)
+public record DiagramInfo(string Path, string Name, string Engine, long Size, string Modified, DiagramStatus? Status, int OpenFeedback,
+    string? Kind = null, string? KindLabel = null)
 {
     public string Glyph => Status is null ? "○" : !Status.Valid ? "⛔" : Status.Warnings > 0 ? "⚠" : "✔";
     public string Badge => OpenFeedback > 0 ? $"💬 {OpenFeedback}" : "";
+    /// Folder inside the workspace ("" = root).
+    public string Folder => Path.Contains('/') ? Path[..Path.LastIndexOf('/')] : "";
+    public string FolderText => Folder.Length > 0 ? Folder + "/" : "";
+    /// Group titles, filled by the window (they depend on the UI language).
+    public string KindGroup { get; set; } = "";
+    public string FolderGroup { get; set; } = "";
+    public System.Windows.Visibility KindVisibility => KindLabel is null ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+    /// Colour of the type tag, by family of diagram.
+    public string KindColor => Kind switch
+    {
+        "flowchart" or "block" or "architecture" or "c4" or "swimlane" or "agentflow" or "requirement" => "#1A73E8",
+        "sequence" or "zenuml" or "state" or "usecase" or "eventmodeling" => "#8250DF",
+        "class" or "er" => "#0E8A8A",
+        "gantt" or "timeline" or "journey" or "kanban" or "gitgraph" => "#D9730D",
+        "mindmap" or "treeview" or "ishikawa" => "#C2185B",
+        _ => "#1E8E3E",
+    };
+    public string KindBackground => "#22" + KindColor[1..];
 }
 
 public record Feedback(string Id, string Path, string? ElementId, int? Line, string Text, string? Context, string Author, string CreatedAt,

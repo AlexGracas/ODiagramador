@@ -49,28 +49,82 @@ struct ContentView: View {
 struct Sidebar: View {
     @EnvironmentObject var state: AppState
     @Binding var showingNew: Bool
+    @AppStorage("listGroup") private var group = "none" // none | kind | folder
+    @AppStorage("listSort") private var sort = "name"   // name | date
+
+    private struct Group: Identifiable {
+        let id: String
+        let title: String
+        let items: [DiagramInfo]
+    }
+
+    private func sorted(_ list: [DiagramInfo]) -> [DiagramInfo] {
+        sort == "date"
+            ? list.sorted { $0.modified != $1.modified ? $0.modified > $1.modified : $0.path < $1.path } // newest first
+            : list.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private var groups: [Group] {
+        switch group {
+        case "kind":
+            return Dictionary(grouping: state.diagrams) { $0.kindLabel ?? state.t("ui-kind-unknown") }
+                .sorted { $0.key.localizedStandardCompare($1.key) == .orderedAscending }
+                .map { Group(id: "k:" + $0.key, title: $0.key, items: sorted($0.value)) }
+        case "folder":
+            return Dictionary(grouping: state.diagrams, by: \.folder)
+                .sorted { $0.key.localizedStandardCompare($1.key) == .orderedAscending }
+                .map { Group(id: "f:" + $0.key, title: $0.key.isEmpty ? state.t("ui-root-folder") : $0.key + "/", items: sorted($0.value)) }
+        default:
+            return [Group(id: "all", title: state.t("ui-diagrams"), items: sorted(state.diagrams))]
+        }
+    }
 
     var body: some View {
         List(selection: Binding(get: { state.selectedPath }, set: { state.select($0) })) {
-            Section(state.t("ui-diagrams")) {
-                ForEach(state.diagrams) { d in
-                    HStack(spacing: 8) {
-                        StatusIcon(status: d.status)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(d.name).lineLimit(1)
-                            Text(d.path).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                        Spacer()
-                        if d.openFeedback > 0 {
-                            Label("\(d.openFeedback)", systemImage: "text.bubble")
-                                .labelStyle(.titleAndIcon)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+            ForEach(groups) { g in
+                Section {
+                    ForEach(g.items) { d in
+                        DiagramRow(d: d, showKind: group != "kind", showFolder: group != "folder")
+                            .tag(d.path)
                     }
-                    .tag(d.path)
+                } header: {
+                    HStack {
+                        Text(g.title)
+                        Spacer()
+                        if group != "none" { Text("\(g.items.count)").monospacedDigit() }
+                    }
                 }
             }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            // how the list is organised: one menu with both choices, its label says the current ones
+            HStack {
+                Menu {
+                    Picker(state.t("ui-group-by"), selection: $group) {
+                        Text(state.t("ui-group-none")).tag("none")
+                        Text(state.t("ui-group-kind")).tag("kind")
+                        Text(state.t("ui-group-folder")).tag("folder")
+                    }
+                    .pickerStyle(.inline)
+                    Picker(state.t("ui-sort-by"), selection: $sort) {
+                        Text(state.t("ui-sort-name")).tag("name")
+                        Text(state.t("ui-sort-date")).tag("date")
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Label(state.t(["kind": "ui-group-kind", "folder": "ui-group-folder"][group] ?? "ui-group-none")
+                          + " · " + state.t(sort == "date" ? "ui-sort-date" : "ui-sort-name"),
+                          systemImage: "line.3.horizontal.decrease.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize(horizontal: false, vertical: true)
+                .help(state.t("ui-group-by") + " / " + state.t("ui-sort-by"))
+                Spacer(minLength: 0)
+            }
+            .font(.caption)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .disabled(state.diagrams.isEmpty)
         }
         .overlay {
             if state.workspace != nil && state.diagrams.isEmpty {
@@ -80,6 +134,63 @@ struct Sidebar: View {
                     .padding()
             }
         }
+    }
+}
+
+struct DiagramRow: View {
+    let d: DiagramInfo
+    let showKind: Bool
+    let showFolder: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            StatusIcon(status: d.status)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(d.name).lineLimit(1)
+                HStack(spacing: 5) {
+                    if showKind, let k = d.kindLabel { KindTag(kind: d.kind ?? "", label: k) }
+                    if showFolder && !d.folder.isEmpty {
+                        Text(d.folder + "/").font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                    }
+                }
+            }
+            Spacer(minLength: 4)
+            if d.openFeedback > 0 {
+                Label("\(d.openFeedback)", systemImage: "text.bubble")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .help(d.kindLabel.map { "\(d.path) · \($0)" } ?? d.path)
+    }
+}
+
+/// Diagram type as a small coloured capsule (the colour follows the family of the type).
+struct KindTag: View {
+    let kind: String
+    let label: String
+
+    private var colour: Color {
+        switch kind {
+        case "flowchart", "block", "architecture", "c4", "swimlane", "agentflow", "requirement": return .blue
+        case "sequence", "zenuml", "state", "usecase", "eventmodeling": return .purple
+        case "class", "er": return .teal
+        case "gantt", "timeline", "journey", "kanban", "gitgraph": return .orange
+        case "mindmap", "treeview", "ishikawa": return .pink
+        default: return .green // charts and maps
+        }
+    }
+
+    var body: some View {
+        Text(label)
+            .font(.caption2.weight(.medium))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .foregroundStyle(colour)
+            .background(colour.opacity(0.14), in: Capsule())
     }
 }
 

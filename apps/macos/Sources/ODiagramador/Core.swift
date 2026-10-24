@@ -121,11 +121,15 @@ struct DiagramInfo: Codable, Hashable, Identifiable {
     var path: String
     var name: String
     var engine: String
+    var kind: String?
+    var kindLabel: String?
     var size: Int
     var modified: String
     var status: DiagramStatus?
     var openFeedback: Int
     var id: String { path }
+    /// Folder inside the workspace ("" = root).
+    var folder: String { (path as NSString).deletingLastPathComponent }
 }
 
 struct Feedback: Codable, Hashable, Identifiable {

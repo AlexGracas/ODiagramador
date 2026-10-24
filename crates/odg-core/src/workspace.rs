@@ -69,6 +69,9 @@ pub struct DiagramInfo {
     pub path: String,
     pub name: String,
     pub engine: String,
+    /// Diagram type declared in the header (`flowchart`, `sequence`… see `kinds`), if recognised.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
     pub size: u64,
     pub modified: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -224,9 +227,11 @@ impl Workspace {
                     .map(|m| time::OffsetDateTime::from(m).format(&time::format_description::well_known::Rfc3339).unwrap_or_default())
                     .unwrap_or_default();
                 let status = self.status(&rel);
+                let kind = fs::read_to_string(&abs).ok().and_then(|src| crate::kinds::detect(&src)).map(|k| k.id.to_string());
                 Some(DiagramInfo {
                     name: abs.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
                     engine: engine.id().to_string(),
+                    kind,
                     size: meta.len(),
                     modified,
                     status,

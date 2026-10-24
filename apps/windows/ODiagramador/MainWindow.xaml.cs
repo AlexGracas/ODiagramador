@@ -1,8 +1,10 @@
+using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -104,6 +106,7 @@ public partial class MainWindow : Window
         SettingsButton.ToolTip = T("ui-settings");
         BuildMcpMenu();
         DiagramsHeader.Text = T("ui-diagrams").ToUpperInvariant();
+        LocalizeListOptions();
         ProblemsTab.Header = $"{T("ui-problems")} ({_report?.Problems.Count ?? 0})";
         FeedbackTab.Header = T("ui-feedback");
         ActivityTab.Header = T("ui-activity");
@@ -396,6 +399,7 @@ public partial class MainWindow : Window
         Prefs.Save();
         if (_workspace is not null) Core.Run("set_config", new { workspace = _workspace, lang });
         LoadStrings();
+        RefreshList(); // diagram types in the new language
         Render();
     }
 
@@ -646,12 +650,65 @@ public partial class MainWindow : Window
     private void RefreshList()
     {
         if (_workspace is null) return;
-        var list = Core.CallOrDefault<List<DiagramInfo>>("list", new { workspace = _workspace }) ?? new();
+        var list = Core.CallOrDefault<List<DiagramInfo>>("list", new { workspace = _workspace, lang = _lang }) ?? new();
         var keep = _selected;
         DiagramList.ItemsSource = list;
+        ApplyListView();
         if (keep is not null) DiagramList.SelectedItem = list.FirstOrDefault(d => d.Path == keep);
         foreach (var d in list) _modified.TryAdd(d.Path, d.Modified);
         RefreshSide();
+    }
+
+    // ---- diagram list: type tag, grouping (none / type / folder) and sorting (name / newest first)
+
+    private bool _listOptionsReady;
+
+    private void LocalizeListOptions()
+    {
+        _listOptionsReady = false;
+        string[] group = { "ui-group-none", "ui-group-kind", "ui-group-folder" }, sort = { "ui-sort-name", "ui-sort-date" };
+        for (var i = 0; i < group.Length; i++) ((ComboBoxItem)GroupBox.Items[i]).Content = T(group[i]);
+        for (var i = 0; i < sort.Length; i++) ((ComboBoxItem)SortBox.Items[i]).Content = T(sort[i]);
+        GroupBox.SelectedIndex = Math.Max(0, Array.IndexOf(new[] { "none", "kind", "folder" }, Prefs.ListGroup));
+        SortBox.SelectedIndex = Prefs.ListSort == "date" ? 1 : 0;
+        GroupBox.ToolTip = T("ui-group-by");
+        SortBox.ToolTip = T("ui-sort-by");
+        _listOptionsReady = true;
+        ApplyListView();
+    }
+
+    private void OnListOptionsChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_listOptionsReady) return;
+        Prefs.ListGroup = (GroupBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "none";
+        Prefs.ListSort = (SortBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "name";
+        Prefs.Save();
+        ApplyListView();
+    }
+
+    private void ApplyListView()
+    {
+        if (DiagramList.ItemsSource is not List<DiagramInfo> list) return;
+        foreach (var d in list)
+        {
+            d.KindGroup = d.KindLabel ?? T("ui-kind-unknown");
+            d.FolderGroup = d.Folder.Length > 0 ? d.Folder + "/" : T("ui-root-folder");
+        }
+        var view = CollectionViewSource.GetDefaultView(list);
+        using (view.DeferRefresh())
+        {
+            view.GroupDescriptions.Clear();
+            view.SortDescriptions.Clear();
+            var key = Prefs.ListGroup switch { "kind" => nameof(DiagramInfo.KindGroup), "folder" => nameof(DiagramInfo.FolderGroup), _ => null };
+            if (key is not null)
+            {
+                view.GroupDescriptions.Add(new PropertyGroupDescription(key));
+                view.SortDescriptions.Add(new SortDescription(key, ListSortDirection.Ascending));
+            }
+            view.SortDescriptions.Add(Prefs.ListSort == "date"
+                ? new SortDescription(nameof(DiagramInfo.Modified), ListSortDirection.Descending)
+                : new SortDescription(nameof(DiagramInfo.Name), ListSortDirection.Ascending));
+        }
     }
 
     private void RefreshSide()
@@ -666,7 +723,7 @@ public partial class MainWindow : Window
     {
         if (_workspace is null) return;
         SyncAgents();
-        var list = Core.CallOrDefault<List<DiagramInfo>>("list", new { workspace = _workspace });
+        var list = Core.CallOrDefault<List<DiagramInfo>>("list", new { workspace = _workspace, lang = _lang });
         if (list is null) return;
         var changed = list.Where(d => !_modified.TryGetValue(d.Path, out var m) || m != d.Modified).Select(d => d.Path).ToList();
         var current = (DiagramList.ItemsSource as List<DiagramInfo>) ?? new();

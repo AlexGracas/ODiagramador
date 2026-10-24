@@ -27,6 +27,7 @@ const ASSETS: &[(&str, &[u8], &str)] = &[
     ("/index.html", include_bytes!("../../../render-kit/index.html"), "text/html; charset=utf-8"),
     ("/bridge.js", include_bytes!("../../../render-kit/bridge.js"), "text/javascript; charset=utf-8"),
     ("/palette.js", include_bytes!("../../../render-kit/palette.js"), "text/javascript; charset=utf-8"),
+    ("/renderers.js", include_bytes!("../../../render-kit/renderers.js"), "text/javascript; charset=utf-8"),
     ("/viewer.css", include_bytes!("../../../render-kit/viewer.css"), "text/css; charset=utf-8"),
     ("/vendor/mermaid-odg.min.js", include_bytes!("../../../render-kit/vendor/mermaid-odg.min.js"), "text/javascript; charset=utf-8"),
 ];

@@ -53,7 +53,7 @@ cp "$ROOT/LICENSE" "$APP/Contents/Resources/LICENSE"
 cp "$ROOT/assets/app-icon/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 mkdir -p "$APP/Contents/Resources/icons"
 cp "$ROOT/assets/icons/"*.svg "$ROOT/assets/icons/README.md" "$APP/Contents/Resources/icons/"
-cp "$ROOT/render-kit/"{index.html,bridge.js,palette.js,viewer.css} "$APP/Contents/Resources/render-kit/"
+cp "$ROOT/render-kit/"{index.html,bridge.js,palette.js,renderers.js,viewer.css} "$APP/Contents/Resources/render-kit/"
 cp "$ROOT/render-kit/vendor/"{mermaid-odg.min.js,mermaid.LICENSE,elkjs.LICENSE,MERMAID_VERSION,ELKJS_VERSION} "$APP/Contents/Resources/render-kit/vendor/"
 # ad-hoc signature so Gatekeeper accepts the local build (use a Developer ID for distribution)
 codesign --force --deep --sign - "$APP" >/dev/null

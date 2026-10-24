@@ -4,7 +4,7 @@
 //!   odiagramador [--workspace DIR] [odiagramador://open?workspace=…&path=…]
 #![allow(deprecated)] // adw::MessageDialog keeps us compatible with libadwaita 1.4 (Ubuntu 24.04)
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -34,6 +34,7 @@ const ASSETS: &[(&str, &[u8], &str)] = &[
     ("/index.html", include_bytes!("../../../render-kit/index.html"), "text/html"),
     ("/bridge.js", include_bytes!("../../../render-kit/bridge.js"), "text/javascript"),
     ("/palette.js", include_bytes!("../../../render-kit/palette.js"), "text/javascript"),
+    ("/renderers.js", include_bytes!("../../../render-kit/renderers.js"), "text/javascript"),
     ("/viewer.css", include_bytes!("../../../render-kit/viewer.css"), "text/css"),
     ("/vendor/mermaid-odg.min.js", include_bytes!("../../../render-kit/vendor/mermaid-odg.min.js"), "text/javascript"),
 ];
@@ -85,6 +86,10 @@ struct Ui {
     window: adw::ApplicationWindow,
     title: adw::WindowTitle,
     list: gtk::ListBox,
+    group_dd: gtk::DropDown,
+    sort_dd: gtk::DropDown,
+    /// set while the list options are being (re)filled, so their change handlers stay quiet
+    list_opts_busy: Rc<Cell<bool>>,
     buffer: sourceview::Buffer,
     editor: sourceview::View,
     web: webkit::WebView,
@@ -278,7 +283,16 @@ fn build_ui(app: &adw::Application, args: &[String]) {
 
     // ---- sidebar
     let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::Single).css_classes(["navigation-sidebar"]).build();
-    let sidebar = gtk::ScrolledWindow::builder().child(&list).width_request(220).build();
+    let list_scroll = gtk::ScrolledWindow::builder().child(&list).vexpand(true).build();
+    // how the list is organised: group (none / type / folder) and sort (name / newest first)
+    let group_dd = gtk::DropDown::builder().hexpand(true).css_classes(["caption"]).build();
+    let sort_dd = gtk::DropDown::builder().hexpand(true).css_classes(["caption"]).build();
+    let list_opts = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(4).homogeneous(true).margin_start(6).margin_end(6).margin_top(6).margin_bottom(2).build();
+    list_opts.append(&group_dd);
+    list_opts.append(&sort_dd);
+    let sidebar = gtk::Box::builder().orientation(gtk::Orientation::Vertical).width_request(220).build();
+    sidebar.append(&list_opts);
+    sidebar.append(&list_scroll);
 
     // ---- editor
     let buffer = sourceview::Buffer::new(None);
@@ -384,6 +398,9 @@ fn build_ui(app: &adw::Application, args: &[String]) {
         window,
         title,
         list,
+        group_dd,
+        sort_dd,
+        list_opts_busy: Rc::new(Cell::new(false)),
         buffer,
         editor,
         web,
@@ -517,10 +534,26 @@ fn apply_strings(ui: &Ui) {
     let u = ui.clone();
     mcp.push(MenuEntry::new(gtk::Image::from_icon_name("emblem-system-symbolic"), s.t("ui-mcp-settings"), move || settings::show_preferences(&u, "mcp")));
     ui.mcp_button.set_popover(Some(&icon_popover(mcp)));
+    let (group_labels, sort_labels) = (
+        ["ui-group-none", "ui-group-kind", "ui-group-folder"].map(|k| s.t(k)),
+        ["ui-sort-name", "ui-sort-date"].map(|k| s.t(k)),
+    );
+    let (group, sort) = (s.prefs.list_group.clone(), s.prefs.list_sort.clone());
+    ui.group_dd.set_tooltip_text(Some(&s.t("ui-group-by")));
+    ui.sort_dd.set_tooltip_text(Some(&s.t("ui-sort-by")));
     drop(s);
+    ui.list_opts_busy.set(true);
+    ui.group_dd.set_model(Some(&gtk::StringList::new(&group_labels.iter().map(String::as_str).collect::<Vec<_>>())));
+    ui.group_dd.set_selected(LIST_GROUPS.iter().position(|g| *g == group).unwrap_or(0) as u32);
+    ui.sort_dd.set_model(Some(&gtk::StringList::new(&sort_labels.iter().map(String::as_str).collect::<Vec<_>>())));
+    ui.sort_dd.set_selected(if sort == "date" { 1 } else { 0 });
+    ui.list_opts_busy.set(false);
+    refresh_list(ui); // diagram types and group titles in the current language
     let all = ui.state.borrow().strings.clone();
     send(ui, json!({"op": "strings", "strings": all}));
 }
+
+const LIST_GROUPS: [&str; 3] = ["none", "kind", "folder"];
 
 // ------------------------------------------------------------------ wiring
 
@@ -531,6 +564,22 @@ fn wire(ui: &Ui, ucm: &webkit::UserContentManager) {
             on_viewer_message(&u, msg);
         }
     });
+
+    for dd in [&ui.group_dd, &ui.sort_dd] {
+        let u = ui.clone();
+        dd.connect_selected_notify(move |_| {
+            if u.list_opts_busy.get() {
+                return;
+            }
+            {
+                let mut s = u.state.borrow_mut();
+                s.prefs.list_group = LIST_GROUPS.get(u.group_dd.selected() as usize).unwrap_or(&"none").to_string();
+                s.prefs.list_sort = if u.sort_dd.selected() == 1 { "date" } else { "name" }.into();
+                s.prefs.save();
+            }
+            refresh_list(&u);
+        });
+    }
 
     let u = ui.clone();
     ui.list.connect_row_selected(move |_, row| {
@@ -997,16 +1046,52 @@ fn open_workspace(ui: &Ui, dir: PathBuf) {
 }
 
 fn refresh_list(ui: &Ui) {
-    let list = {
+    let (list, lang, group, sort, unknown, root) = {
         let s = ui.state.borrow();
         let Some(ws) = &s.ws else { return };
-        ws.list().unwrap_or_default()
+        (ws.list().unwrap_or_default(), s.lang, s.prefs.list_group.clone(), s.prefs.list_sort.clone(), s.t("ui-kind-unknown"), s.t("ui-root-folder"))
     };
     while let Some(child) = ui.list.first_child() {
         ui.list.remove(&child);
     }
-    for d in &list {
-        let row = adw::ActionRow::builder().title(glib::markup_escape_text(&d.name).as_str()).subtitle(glib::markup_escape_text(&d.path).as_str()).build();
+    let kind_label = |d: &odg_core::workspace::DiagramInfo| d.kind.as_deref().and_then(odg_core::kinds::find).map(|k| k.label(lang));
+    let folder = |d: &odg_core::workspace::DiagramInfo| d.path.rfind('/').map(|i| d.path[..i].to_string()).unwrap_or_default();
+    let group_of = |d: &odg_core::workspace::DiagramInfo| match group.as_str() {
+        "kind" => Some(kind_label(d).map(str::to_string).unwrap_or_else(|| unknown.clone())),
+        "folder" => Some(Some(folder(d)).filter(|f| !f.is_empty()).map(|f| f + "/").unwrap_or_else(|| root.clone())),
+        _ => None,
+    };
+    let mut ordered: Vec<&odg_core::workspace::DiagramInfo> = list.iter().collect();
+    ordered.sort_by(|a, b| {
+        let by_group = group_of(a).map(|g| g.to_lowercase()).cmp(&group_of(b).map(|g| g.to_lowercase()));
+        let within = if sort == "date" { b.modified.cmp(&a.modified) } else { a.name.to_lowercase().cmp(&b.name.to_lowercase()) };
+        by_group.then(within).then(a.path.cmp(&b.path))
+    });
+    let mut last_group: Option<String> = None;
+    for d in ordered {
+        if let Some(g) = group_of(d) {
+            if last_group.as_ref() != Some(&g) {
+                let count = list.iter().filter(|x| group_of(x).as_ref() == Some(&g)).count();
+                let head = gtk::Label::builder().label(format!("{g}  ·  {count}")).xalign(0.0).css_classes(["caption-heading", "dim-label"]).margin_start(8).margin_top(8).margin_bottom(2).build();
+                ui.list.append(&gtk::ListBoxRow::builder().child(&head).selectable(false).activatable(false).build());
+                last_group = Some(g);
+            }
+        }
+        // second line: coloured diagram type + folder (each left out when it is the group)
+        let mut subtitle = String::new();
+        if group != "kind" {
+            if let Some(k) = kind_label(d) {
+                subtitle.push_str(&format!("<span foreground=\"{}\" weight=\"bold\">{}</span>", kind_colour(d.kind.as_deref().unwrap_or("")), glib::markup_escape_text(k)));
+            }
+        }
+        let f = folder(d);
+        if group != "folder" && !f.is_empty() {
+            if !subtitle.is_empty() {
+                subtitle.push_str("  ");
+            }
+            subtitle.push_str(&glib::markup_escape_text(&format!("{f}/")));
+        }
+        let row = adw::ActionRow::builder().title(glib::markup_escape_text(&d.name).as_str()).subtitle(subtitle.as_str()).tooltip_text(d.path.as_str()).build();
         let icon = gtk::Image::from_icon_name(status_icon(d.status.as_ref().map(|s| (s.valid, s.warnings))));
         icon.set_widget_name("status");
         row.add_prefix(&icon);
@@ -1024,6 +1109,18 @@ fn refresh_list(ui: &Ui) {
         s.modified.entry(d.path.clone()).or_insert_with(|| d.modified.clone());
     }
     s.diagrams = list;
+}
+
+/// Colour of the diagram-type label, by family of diagram (same as the macOS and Windows apps).
+fn kind_colour(kind: &str) -> &'static str {
+    match kind {
+        "flowchart" | "block" | "architecture" | "c4" | "swimlane" | "agentflow" | "requirement" => "#1A73E8",
+        "sequence" | "zenuml" | "state" | "usecase" | "eventmodeling" => "#8250DF",
+        "class" | "er" => "#0E8A8A",
+        "gantt" | "timeline" | "journey" | "kanban" | "gitgraph" => "#D9730D",
+        "mindmap" | "treeview" | "ishikawa" => "#C2185B",
+        _ => "#1E8E3E",
+    }
 }
 
 fn status_icon(status: Option<(bool, usize)>) -> &'static str {

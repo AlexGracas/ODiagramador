@@ -19,6 +19,9 @@ public sealed class Preferences
     public bool McpLan { get; set; }
     public string McpToken { get; set; } = RemoteMcp.NewToken();
     public string? LastWorkspace { get; set; }
+    /// Diagram list: "none" | "kind" | "folder", and "name" | "date".
+    public string ListGroup { get; set; } = "none";
+    public string ListSort { get; set; } = "name";
 
     private static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ODiagramador");
     private static readonly string FilePath = Path.Combine(Dir, "settings.json");

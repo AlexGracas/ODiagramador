@@ -116,17 +116,51 @@
 
             <!-- sidebar -->
             <DockPanel Grid.Column="0">
-                <TextBlock x:Name="DiagramsHeader" DockPanel.Dock="Top" Margin="8,6" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock x:Name="DiagramsHeader" DockPanel.Dock="Top" Margin="8,6,8,2" Foreground="{StaticResource MutedBrush}" />
+                <!-- how the list is organised -->
+                <Grid DockPanel.Dock="Top" Margin="6,0,6,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="4" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="GroupBox" Grid.Column="0" FontSize="11" SelectionChanged="OnListOptionsChanged">
+                        <ComboBoxItem Tag="none" />
+                        <ComboBoxItem Tag="kind" />
+                        <ComboBoxItem Tag="folder" />
+                    </ComboBox>
+                    <ComboBox x:Name="SortBox" Grid.Column="2" FontSize="11" SelectionChanged="OnListOptionsChanged">
+                        <ComboBoxItem Tag="name" />
+                        <ComboBoxItem Tag="date" />
+                    </ComboBox>
+                </Grid>
                 <TextBlock x:Name="EmptyText" DockPanel.Dock="Top" Margin="8" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
                 <ListBox x:Name="DiagramList" BorderThickness="0" SelectionChanged="OnDiagramSelected">
+                    <ListBox.GroupStyle>
+                        <GroupStyle>
+                            <GroupStyle.HeaderTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="4,8,6,2">
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding ItemCount}" FontSize="11" Foreground="{StaticResource MutedBrush}" />
+                                        <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </GroupStyle.HeaderTemplate>
+                        </GroupStyle>
+                    </ListBox.GroupStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <DockPanel Margin="2">
+                            <DockPanel Margin="2" ToolTip="{Binding Path}">
                                 <TextBlock DockPanel.Dock="Left" Text="{Binding Glyph}" Width="20" />
                                 <TextBlock DockPanel.Dock="Right" Text="{Binding Badge}" Foreground="{StaticResource MutedBrush}" />
                                 <StackPanel>
-                                    <TextBlock Text="{Binding Name}" />
-                                    <TextBlock Text="{Binding Path}" FontSize="11" Foreground="{StaticResource MutedBrush}" />
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
+                                        <Border Visibility="{Binding KindVisibility}" Background="{Binding KindBackground}" CornerRadius="7" Padding="5,0" Margin="0,0,5,0">
+                                            <TextBlock Text="{Binding KindLabel}" FontSize="10.5" FontWeight="SemiBold" Foreground="{Binding KindColor}" />
+                                        </Border>
+                                        <TextBlock Text="{Binding FolderText}" FontSize="11" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
                                 </StackPanel>
                             </DockPanel>
                         </DataTemplate>

@@ -24,6 +24,9 @@ pub struct Prefs {
     pub mcp_lan: bool,
     pub mcp_token: String,
     pub last_workspace: Option<String>,
+    /// Diagram list: "none" | "kind" | "folder", and "name" | "date".
+    pub list_group: String,
+    pub list_sort: String,
 }
 
 impl Default for Prefs {
@@ -39,6 +42,8 @@ impl Default for Prefs {
             mcp_lan: false,
             mcp_token: new_token(),
             last_workspace: None,
+            list_group: "none".into(),
+            list_sort: "name".into(),
         }
     }
 }
