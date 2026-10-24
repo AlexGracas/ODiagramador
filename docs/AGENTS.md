@@ -70,6 +70,7 @@ copy ready-made configs for each client. Traffic is plain HTTP: outside a truste
 | `open_diagram(path, message?)` | Change the diagram open in the human's viewer. |
 | `set_zoom(zoom, path?, center_on?)` | Zoom the human's view: factor (`1.5`), percentage (`"150%"`), or `fit` / `in` / `out`. |
 | `center_on_element(element_id, path?, zoom?, message?)` | Scroll so an element is in the middle of the screen (it pulses briefly). |
+| `select_element(element_id, path?, center?, message?)` | Select an element as if the human clicked it (outline, inspector, source line); empty id clears. `get_viewer_status` then reports it as selected. |
 | `highlight_elements(path, element_ids, message?, level?)` | Put elements in evidence: they glow, the rest dims, the view centres on them, and the note appears beside them. |
 | `notify_user(message, level?, path?, element_ids?)` | Show a message to the human (progress, summary, warning). Does not wait. |
 | `ask_user(question, options?, allow_text?, path?, element_ids?, wait_seconds?)` | Ask the human; options become buttons. Waits up to `wait_seconds` (default 60, max 600) and returns the answer, or a `question_id` to check later. |

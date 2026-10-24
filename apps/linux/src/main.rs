@@ -819,7 +819,7 @@ fn sync_agents(ui: &Ui) {
 fn deliver_agent_message(ui: &Ui, m: &odg_core::channel::Message) {
     let mut switched = false;
     if let Some(path) = &m.path {
-        let wants_switch = matches!(m.kind.as_str(), "show" | "highlight" | "view") || !m.element_ids.is_empty();
+        let wants_switch = matches!(m.kind.as_str(), "show" | "highlight" | "view" | "select") || !m.element_ids.is_empty();
         let current = ui.state.borrow().selected.clone();
         if wants_switch && current.as_deref() != Some(path.as_str()) {
             if !ui.state.borrow().diagrams.iter().any(|d| &d.path == path) {

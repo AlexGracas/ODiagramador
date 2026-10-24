@@ -253,7 +253,7 @@ final class AppState: ObservableObject {
         let kind = m["kind"] as? String ?? ""
         let ids = m["element_ids"] as? [String] ?? []
         var switched = false
-        if let p = m["path"] as? String, ["show", "highlight", "view"].contains(kind) || !ids.isEmpty, p != selectedPath {
+        if let p = m["path"] as? String, ["show", "highlight", "view", "select"].contains(kind) || !ids.isEmpty, p != selectedPath {
             if !diagrams.contains(where: { $0.path == p }) { refreshList() }
             if diagrams.contains(where: { $0.path == p }) {
                 select(p)

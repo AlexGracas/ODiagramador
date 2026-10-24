@@ -25,7 +25,7 @@ save the file AND return the validation report plus an image; (3) look at the im
 markers that match the report; (4) fix errors first (line numbers given), then warnings; (5) call get_feedback \
 to read comments the human left in the desktop viewer, and resolve_feedback when done. \
 Talking to the human: open_diagram / show_diagram change the diagram open in their desktop viewer (show_diagram can highlight elements with a note); \
-set_zoom changes the zoom (factor, \"150%\", fit, in, out) and center_on_element scrolls an element to the middle of the screen; \
+set_zoom changes the zoom (factor, \"150%\", fit, in, out), center_on_element scrolls an element to the middle of the screen and select_element selects it as if the human clicked it; \
 highlight_elements puts elements in evidence; notify_user shows a message; ask_user asks a question (optionally with choices) \
 and waits for the answer; get_user_replies reads answers later; get_viewer_status tells whether the human has the viewer open \
 and what they are looking at. Write tools accept show=true to open the changed diagram for the human. \
@@ -500,6 +500,27 @@ impl Server {
                 }
                 Ok(json!({"content": [{"type": "text", "text": note}], "structuredContent": {"message": msg}}))
             }
+            "select_element" => {
+                let id = s("element_id").unwrap_or("").trim().to_string();
+                let center = b("center", true);
+                let (msg, mut note) = self.tell_viewer(Message {
+                    kind: "select".into(),
+                    path: s("path").map(str::to_string),
+                    element_ids: if id.is_empty() { vec![] } else { vec![id.clone()] },
+                    center_on: (center && !id.is_empty()).then(|| id.clone()),
+                    text: s("message").map(str::to_string),
+                    ..Default::default()
+                })?;
+                if !id.is_empty() {
+                    let path = s("path").map(str::to_string).or_else(|| self.ws.presence().and_then(|p| p.path));
+                    if let Some(src) = path.as_deref().and_then(|p| self.ws.read(p).ok()) {
+                        if !mentions_id(&src, &id) {
+                            note.push_str(&format!("\nWarning: `{id}` was not found in {}.", path.unwrap_or_default()));
+                        }
+                    }
+                }
+                Ok(json!({"content": [{"type": "text", "text": note}], "structuredContent": {"message": msg}}))
+            }
             "highlight_elements" => {
                 let path = s("path").ok_or(ToolError("`path` is required".into()))?;
                 let ids = strings(args, "element_ids");
@@ -678,6 +699,10 @@ impl Server {
         let what = match msg.kind.as_str() {
             "show" => format!("Opened {} in the human's viewer", msg.path.as_deref().unwrap_or("the diagram")),
             "highlight" => format!("Highlighted {} in {} for the human", msg.element_ids.join(", "), msg.path.as_deref().unwrap_or("the diagram")),
+            "select" => match msg.element_ids.first() {
+                Some(id) => format!("Selected `{id}` in the human's viewer (as if they clicked it: inspector, source line)"),
+                None => "Cleared the selection in the human's viewer".to_string(),
+            },
             "view" => match (&msg.center_on, msg.fit) {
                 (Some(id), _) => format!("Centred the human's view on `{id}`"),
                 (None, Some(true)) => "Fitted the diagram to the human's window".to_string(),
@@ -1075,6 +1100,14 @@ fn tool_definitions() -> Value {
             "element_id": {"type": "string"},
             "path": {"type": "string"},
             "zoom": {"type": "number", "description": "Factor (1 = 100%)"},
+            "message": {"type": "string"}}, "required": ["element_id"]},
+         "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false}},
+        {"name": "select_element", "title": "Select an element in the human's viewer",
+         "description": "Select an element in the human's viewer exactly as if they clicked it: selection outline, inspector, the source scrolled to its line, and get_viewer_status reports it as the selected element (comments the human writes then attach to it). Centres it by default (center=false keeps the view). Empty element_id clears the selection. Optional path opens that diagram first.",
+         "inputSchema": {"type": "object", "properties": {
+            "element_id": {"type": "string", "description": "Node id (from the source / inspect_diagram); empty to clear"},
+            "path": {"type": "string"},
+            "center": {"type": "boolean", "description": "Scroll it to the middle of the screen (default true)"},
             "message": {"type": "string"}}, "required": ["element_id"]},
          "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false}},
         {"name": "highlight_elements", "title": "Highlight elements for the human",

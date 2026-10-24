@@ -5,6 +5,7 @@
 //!   odg render FILE [--out F] [--svg]       write a PNG/SVG preview
 //!   odg watch  [--workspace DIR]            re-validate diagrams whenever they change
 //!   odg mcp-config [--client NAME]          print the MCP config snippet for an agent
+#![recursion_limit = "512"] // the MCP tool list is one large json! literal
 
 mod mcp;
 mod native;

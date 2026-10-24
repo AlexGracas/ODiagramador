@@ -2,7 +2,7 @@
 //!
 //! - `.odiagramador/messages.jsonl` — append-only conversation. Agent entries are also commands for the
 //!   desktop viewer: `show` (open a diagram), `highlight` (put elements in evidence), `view` (zoom / centre on
-//!   an element), `notify` (a message), `ask` (a question with optional choices). The human's replies are `answer` entries (`reply_to` = question id).
+//!   an element), `select` (select an element as if clicked), `notify` (a message), `ask` (a question). The human's replies are `answer` entries (`reply_to` = question id).
 //! - `.odiagramador/viewer.json` — presence: the desktop app rewrites it every few seconds with what the human
 //!   is looking at, so an agent knows whether anyone will see its message.
 
@@ -28,7 +28,7 @@ pub struct Message {
     /// Seconds since the Unix epoch (for ages and ordering).
     pub epoch: u64,
     pub from: Option<Actor>,
-    /// show | highlight | view | notify | ask | answer
+    /// show | highlight | view | select | notify | ask | answer
     pub kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,

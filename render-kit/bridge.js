@@ -705,6 +705,7 @@
     if (spotlight.pending) applySpotlight();
     else restoreSpotlight();
     if (agentView.pending) applyView();
+    if (agentSelect.pending) applySelect();
   }
 
   function showError(err) {
@@ -994,6 +995,27 @@
     applyTransform();
   }
 
+  // select_element: the same as the human clicking the element (inspector, editor line, presence)
+  var agentSelect = { pending: null };
+
+  function applySelect() {
+    var sel = agentSelect.pending;
+    if (!sel || !view.svg) return;
+    agentSelect.pending = null;
+    if (!sel.id) {
+      highlight(null);
+      if (window.odgPalette) window.odgPalette.clear();
+      post({ op: "select", element_id: null });
+      return;
+    }
+    var el = view.svg.querySelector('[data-id="' + CSS.escape(sel.id) + '"]');
+    if (!el) return;
+    if (window.odgPalette) window.odgPalette.select(sel.id);
+    highlight(sel.id);
+    post({ op: "select", element_id: sel.id });
+    if (agentView.pending) applyView();
+  }
+
   /** Pans (no zoom change) so the element sits in the middle of the free part of the preview. */
   function centerOn(el) {
     var vp = viewport.getBoundingClientRect();
@@ -1036,6 +1058,13 @@
   function agentMessage(m, switched) {
     if (!m || (m.id && shownMessages[m.id])) return;
     if (m.id) shownMessages[m.id] = true;
+    if (m.kind === "select") {
+      if (m.text) addCard(m);
+      agentSelect.pending = { id: (m.element_ids || [])[0] || null, center: m.center_on != null };
+      if (m.center_on) agentView.pending = { center: m.center_on, at: Date.now() };
+      if (!switched) applySelect();
+      return;
+    }
     if (m.kind === "view") {
       if (m.text) addCard(m);
       agentView.pending = { zoom: m.zoom, fit: m.fit, center: m.center_on, at: Date.now() };

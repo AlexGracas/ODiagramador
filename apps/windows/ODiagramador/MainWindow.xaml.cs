@@ -704,7 +704,7 @@ public partial class MainWindow : Window
         var path = m["path"]?.GetValue<string>();
         App.Log($"agent message: {kind} {path} {m["id"]}");
         var switched = false;
-        if (path is not null && (kind is "show" or "highlight" or "view" || hasIds) && path != _selected)
+        if (path is not null && (kind is "show" or "highlight" or "view" or "select" || hasIds) && path != _selected)
         {
             if ((DiagramList.ItemsSource as List<DiagramInfo>)?.All(d => d.Path != path) ?? true) RefreshList();
             if ((DiagramList.ItemsSource as List<DiagramInfo>)?.FirstOrDefault(d => d.Path == path) is { } item)
