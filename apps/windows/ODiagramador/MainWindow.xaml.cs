@@ -476,6 +476,7 @@ public partial class MainWindow : Window
                 break;
             case "select":
                 _selectedElement = msg["element_id"]?.GetValue<string>();
+                App.Log($"selected element: {_selectedElement ?? "(none)"} in {_selected}");
                 ElementTag.Text = _selectedElement ?? "";
                 if (_selectedElement is not null &&
                     Core.CallOrDefault<int?>("find_line", new { source = Editor.Text, id = _selectedElement }) is int line)
@@ -702,8 +703,9 @@ public partial class MainWindow : Window
         var kind = m["kind"]?.GetValue<string>() ?? "";
         var hasIds = m["element_ids"] is JsonArray { Count: > 0 };
         var path = m["path"]?.GetValue<string>();
-        App.Log($"agent message: {kind} {path} {m["id"]}");
         var switched = false;
+        var before = _selected;
+        var outcome = path is null ? "current diagram" : path == _selected ? "already open" : "not switched";
         if (path is not null && (kind is "show" or "highlight" or "view" or "select" || hasIds) && path != _selected)
         {
             if ((DiagramList.ItemsSource as List<DiagramInfo>)?.All(d => d.Path != path) ?? true) RefreshList();
@@ -714,8 +716,21 @@ public partial class MainWindow : Window
                 DiagramList.SelectedItem = item;
                 _loading = false;
                 switched = true;
+                outcome = $"switched from {before ?? "(none)"}";
+            }
+            else
+            {
+                outcome = "NOT FOUND in the diagram list";
             }
         }
+        // one line per agent request with what was asked and what the window did
+        var details = new List<string>();
+        if (m["element_ids"] is JsonArray ids && ids.Count > 0) details.Add("elements=" + string.Join(",", ids.Select(i => i?.ToString())));
+        if (m["zoom"] is JsonNode z) details.Add($"zoom={z}");
+        if (m["fit"]?.GetValue<bool>() == true) details.Add("fit");
+        if (m["center_on"] is JsonNode c) details.Add($"center={c}");
+        if (m["client"] is JsonNode cl) details.Add($"from={cl}");
+        App.Log($"agent {kind}: {path ?? _selected ?? "(no diagram)"} — {outcome}{(details.Count > 0 ? " · " + string.Join(" ", details) : "")} [{m["id"]}]");
         Send(new JsonObject { ["op"] = "agent", ["message"] = m.DeepClone(), ["switched"] = switched });
         if (kind == "notify") return;
         // show / highlight / ask: bring the window forward so the human sees it
@@ -839,7 +854,11 @@ public partial class MainWindow : Window
     private void OnDiagramSelected(object sender, SelectionChangedEventArgs e)
     {
         if (_loading) return;
-        if (DiagramList.SelectedItem is DiagramInfo d && d.Path != _selected) Select(d.Path);
+        if (DiagramList.SelectedItem is DiagramInfo d && d.Path != _selected)
+        {
+            App.Log($"opened by the user: {d.Path}");
+            Select(d.Path);
+        }
     }
 
     private void OnSourceChanged(object? sender, EventArgs e)
