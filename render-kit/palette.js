@@ -31,6 +31,8 @@
     "ui-o-inheritance": "Inheritance", "ui-o-composition": "Composition", "ui-o-aggregation": "Aggregation", "ui-o-association": "Association",
     "ui-o-dependency": "Dependency", "ui-o-realization": "Realization",
     "ui-o-one": "Exactly one", "ui-o-zero_one": "Zero or one", "ui-o-zero_many": "Zero or many", "ui-o-one_many": "One or many",
+    "ui-m-rename": "Rename…", "ui-m-edit-text": "Edit text…", "ui-m-shape": "Shape", "ui-m-color": "Colour", "ui-m-no-color": "No colour",
+    "ui-m-connect": "Connect to", "ui-m-properties": "Properties…", "ui-m-connections": "connections",
     "ui-i-node": "Edit element", "ui-i-edge": "Edit connection", "ui-i-save": "Save", "ui-i-delete": "Delete", "ui-i-confirm": "Click again to delete",
     "ui-dir-TB": "Top → bottom (TB)", "ui-dir-BT": "Bottom → top (BT)", "ui-dir-LR": "Left → right (LR)", "ui-dir-RL": "Right → left (RL)"
   };
@@ -144,6 +146,8 @@
     hexagon: "hexagon", odd: "flag"
   };
   var bar = document.getElementById("palette");
+  var ctors = document.getElementById("pal-ctors"); // creation buttons (the bar also holds mode and undo/redo)
+  var ctorSep = document.getElementById("pal-ctor-sep");
   var form = document.getElementById("ctor-form");
 
   function kindOf(type) {
@@ -183,18 +187,15 @@
   }
 
   function renderBar() {
-    bar.innerHTML = "";
+    ctors.innerHTML = "";
     var items = PALETTE[state.kind];
-    if (!items) {
-      bar.hidden = true;
-      document.body.classList.remove("has-palette");
-      return;
-    }
-    bar.hidden = false;
+    ctors.hidden = !items;
+    ctorSep.hidden = !items;
     document.body.classList.add("has-palette");
     requestAnimationFrame(function () {
       document.documentElement.style.setProperty("--palette-h", bar.getBoundingClientRect().height + "px");
     });
+    if (!items) return;
     if (state.kind !== "sequence") {
       var label = el("label", { class: "pal-dir" });
       label.appendChild(el("span", null, t("ui-c-direction")));
@@ -208,8 +209,8 @@
         window.odg.post({ op: "construct", construct: "direction", params: { dir: sel.value } });
       });
       label.appendChild(sel);
-      bar.appendChild(label);
-      bar.appendChild(el("span", { class: "pal-sep" }));
+      ctors.appendChild(label);
+      ctors.appendChild(el("span", { class: "pal-sep" }));
     }
     items.forEach(function (item, i) {
       var b = el("button", { class: "pal-btn", "data-i": String(i), title: t(item.label) });
@@ -219,7 +220,7 @@
         if (!item.fields.length) return submit(item, {});
         openForm(item, b);
       });
-      bar.appendChild(b);
+      ctors.appendChild(b);
     });
   }
 
@@ -349,17 +350,8 @@
     var del = el("button", { type: "button", class: "danger" }, t("ui-i-delete"));
     var cancel = el("button", { type: "button" }, t("ui-f-cancel"));
     var save = el("button", { type: "button", class: "primary" }, t("ui-i-save"));
-    var armed = false;
-    del.addEventListener("click", function () {
-      if (!armed) {
-        armed = true;
-        del.textContent = t("ui-i-confirm");
-        del.classList.add("armed");
-        return;
-      }
-      if (isEdge) edit("edge_delete", { from: target.from, to: target.to, index: target.index });
-      else edit("delete", { id: target.id });
-    });
+    // deletes at once: Undo (↶ / Cmd+Z) brings it back
+    del.addEventListener("click", function () { remove(target); });
     cancel.addEventListener("click", closeForm);
     var originalShape = shapeInput ? shapeInput.value : null;
     function doSave() {
@@ -412,6 +404,167 @@
     return { type: "node", id: id, label: node.label || id, shape: node.shape, group: group };
   }
 
+  function remove(target) {
+    if (target.type === "edge") edit("edge_delete", { from: target.from, to: target.to, index: target.index });
+    else edit("delete", { id: target.id });
+  }
+
+  // ---- double-click / "Rename…": just the text, in place
+  function rename(target, x, y) {
+    if (!target) return;
+    form.innerHTML = "";
+    state.open = target;
+    var isEdge = target.type === "edge";
+    form.appendChild(el("div", { class: "ctor-title" }, (isEdge ? t("ui-m-edit-text") : t("ui-m-rename")) + "  " + (isEdge ? target.from + " → " + target.to : target.id)));
+    var input = el("input", { type: "text" });
+    input.value = target.label || "";
+    form.appendChild(input);
+    form.hidden = false;
+    form.style.top = Math.max(8, Math.min(y + 12, window.innerHeight - form.offsetHeight - 8)) + "px";
+    form.style.left = Math.max(8, Math.min(x - 40, window.innerWidth - form.offsetWidth - 8)) + "px";
+    input.focus();
+    input.select();
+    form.onkeydown = function (e) {
+      if (e.key === "Escape") closeForm();
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      var label = input.value.trim();
+      if (isEdge) return label !== (target.label || "") ? edit("edge_label", { from: target.from, to: target.to, index: target.index, label: label }) : closeForm();
+      if (label && label !== (target.label || "")) edit("rename", { id: target.id, label: label });
+      else closeForm();
+    };
+  }
+
+  // ---- right-click menu
+  var menu = el("div", { id: "ctx-menu", hidden: "" });
+  document.body.appendChild(menu);
+  var COLOURS = [
+    ["#e8f0fe", "#1a73e8"], ["#e6f4ea", "#1e8e3e"], ["#fef7e0", "#f9ab00"], ["#fce8e6", "#d93025"], ["#f3e8fd", "#9334e6"],
+    ["#e0f7fa", "#00838f"], ["#fff3e0", "#ef6c00"], ["#eceff1", "#455a64"], ["#ffffff", "#202124"], ["#202124", "#000000"]
+  ];
+
+  function closeMenu() {
+    menu.hidden = true;
+    menu.innerHTML = "";
+  }
+
+  function menuItem(parent, label, action, opts) {
+    var b = el("button", { type: "button", class: "ctx-item" + (opts && opts.danger ? " danger" : "") });
+    b.appendChild(el("span", null, label));
+    if (opts && opts.sub) b.appendChild(el("span", { class: "ctx-more" }, "›"));
+    b.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (opts && opts.sub) return;
+      closeMenu();
+      action();
+    });
+    if (opts && opts.sub) {
+      var sub = el("div", { id: "", class: "ctx-sub" });
+      sub.setAttribute("style", "position:absolute;left:100%;top:-4px;margin-left:4px;min-width:170px;padding:4px;border:1px solid var(--border);border-radius:8px;background:var(--bg);box-shadow:0 10px 28px rgba(0,0,0,.22);display:none");
+      opts.sub(sub);
+      b.appendChild(sub);
+      b.addEventListener("mouseenter", function () {
+        Array.prototype.forEach.call(menu.querySelectorAll(".ctx-sub"), function (x) { x.style.display = "none"; });
+        Array.prototype.forEach.call(menu.querySelectorAll(".ctx-item.open"), function (x) { x.classList.remove("open"); });
+        sub.style.display = "block";
+        sub.style.left = "100%";
+        sub.style.right = "auto";
+        sub.style.top = "-4px";
+        b.classList.add("open");
+        // no room on the right (or below): open towards the other side
+        var sr = sub.getBoundingClientRect();
+        if (sr.right > window.innerWidth - 8) {
+          sub.style.left = "auto";
+          sub.style.right = "100%";
+          sub.style.marginLeft = "0";
+          sub.style.marginRight = "4px";
+          // neither side has room (narrow window): keep it inside the window, over the menu if needed
+          var fr = sub.getBoundingClientRect();
+          if (fr.left < 8) {
+            var left = Math.max(8, Math.min(window.innerWidth - 8 - fr.width, fr.left));
+            sub.style.right = "auto";
+            sub.style.marginRight = "0";
+            sub.style.left = (left - b.getBoundingClientRect().left) + "px";
+          }
+        }
+        if (sr.bottom > window.innerHeight - 8) sub.style.top = Math.min(-4, window.innerHeight - 8 - sr.bottom) + "px";
+      });
+    } else {
+      b.addEventListener("mouseenter", function () {
+        if (b.parentNode !== menu) return;
+        Array.prototype.forEach.call(menu.querySelectorAll(".ctx-sub"), function (x) { x.style.display = "none"; });
+        Array.prototype.forEach.call(menu.querySelectorAll(".ctx-item.open"), function (x) { x.classList.remove("open"); });
+      });
+    }
+    parent.appendChild(b);
+    return b;
+  }
+
+  function contextMenu(id, isEdge, x, y, editing) {
+    closeForm();
+    menu.innerHTML = "";
+    var target = targetFor(id, isEdge);
+    var node = !isEdge && state.nodes.concat(state.groups).filter(function (n) { return n.id === id; })[0];
+    var links = state.edges.filter(function (e) { return e.from === id || e.to === id; }).length;
+    var head = isEdge ? (target ? target.from + " → " + target.to : id) : id + (node && node.label && node.label !== id ? " · " + node.label : "") + (isEdge ? "" : "  ·  " + links + " " + t("ui-m-connections"));
+    menu.appendChild(el("div", { class: "ctx-head" }, head));
+    if (editing && target) {
+      menuItem(menu, isEdge ? t("ui-m-edit-text") : t("ui-m-rename"), function () { rename(target, x, y); });
+      if (!isEdge && state.kind === "flowchart" && !target.group) {
+        menuItem(menu, t("ui-m-shape"), null, { sub: function (sub) {
+          SHAPES.concat(["flag"]).forEach(function (sh) {
+            menuItem(sub, t("ui-o-" + sh), function () { edit("shape", { id: id, shape: sh, label: target.label || id }); });
+          });
+        } });
+      }
+      if (!isEdge && (state.kind === "flowchart" || state.kind === "class")) {
+        menuItem(menu, t("ui-m-color"), null, { sub: function (sub) {
+          var grid = el("div", { class: "ctx-swatches" });
+          COLOURS.forEach(function (c) {
+            var sw = el("button", { type: "button", class: "ctx-swatch", title: c[0] });
+            sw.style.background = c[0];
+            sw.style.borderColor = c[1];
+            sw.addEventListener("click", function (e) {
+              e.stopPropagation();
+              closeMenu();
+              edit("style", { id: id, fill: c[0], stroke: c[1], color: c[0] === "#202124" ? "#ffffff" : "" });
+            });
+            grid.appendChild(sw);
+          });
+          sub.appendChild(grid);
+          menuItem(sub, t("ui-m-no-color"), function () { edit("style", { id: id, fill: "", stroke: "", color: "" }); });
+        } });
+      }
+      var others = state.nodes.filter(function (n) { return n.id !== id; });
+      var connect = { flowchart: "flow.edge", state: "state.transition", class: "class.relation" }[state.kind];
+      if (!isEdge && connect && others.length) {
+        menuItem(menu, t("ui-m-connect"), null, { sub: function (sub) {
+          others.slice(0, 24).forEach(function (n) {
+            menuItem(sub, n.label && n.label !== n.id ? n.label : n.id, function () {
+              var params = { from: id, to: n.id };
+              if (connect === "class.relation") params.type = "association";
+              window.odg.post({ op: "construct", construct: connect, params: params });
+            });
+          });
+        } });
+      }
+      menu.appendChild(el("div", { class: "ctx-sep" }));
+      menuItem(menu, t("ui-i-delete"), function () { remove(target); }, { danger: true });
+      menu.appendChild(el("div", { class: "ctx-sep" }));
+      menuItem(menu, t("ui-m-properties"), function () { inspect(target, x, y); });
+    }
+    menu.hidden = false;
+    menu.style.left = Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8)) + "px";
+    menu.style.top = Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8)) + "px";
+  }
+
+  document.addEventListener("mousedown", function (e) {
+    if (!menu.hidden && !menu.contains(e.target)) closeMenu();
+  }, true);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && !menu.hidden) closeMenu();
+  });
+
   // a click anywhere outside the form closes it, like Cancel
   document.addEventListener("mousedown", function (e) {
     if (form.hidden || !state.open) return;
@@ -420,7 +573,9 @@
   }, true);
 
   window.odgPalette = {
-    close: function () { closeForm(); },
+    close: function () { closeForm(); closeMenu(); },
+    rename: function (id, isEdge, x, y) { rename(targetFor(id, isEdge), x, y); },
+    contextMenu: function (id, isEdge, x, y, editing) { contextMenu(id, isEdge, x, y, editing); },
     /** Opens the inspector for a clicked element (bridge.js calls this). */
     inspect: function (id, isEdge, x, y) {
       inspect(targetFor(id, isEdge), x, y);
@@ -446,7 +601,7 @@
     },
     select: function (id) { state.selected = id; },
     strings: function (s) {
-      for (var k in s) if (/^ui-(c|f|o|i|dir)-/.test(k)) T[k] = s[k];
+      for (var k in s) if (/^ui-(c|f|o|i|m|dir)-/.test(k)) T[k] = s[k];
       renderBar();
     }
   };

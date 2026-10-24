@@ -691,7 +691,7 @@
     document.getElementById("banner").hidden = true;
     document.getElementById("empty").hidden = true;
     document.getElementById("toolbar").hidden = false;
-    document.getElementById("modebar").hidden = false;
+    document.getElementById("palette").hidden = false;
     stage.innerHTML = "";
     stage.appendChild(svg);
     var firstTime = !view.svg;
@@ -743,14 +743,24 @@
     stage.innerHTML = "";
     view.svg = null;
     document.getElementById("toolbar").hidden = true;
-    document.getElementById("modebar").hidden = true;
+    document.getElementById("palette").hidden = true;
     document.getElementById("banner").hidden = true;
     var empty = document.getElementById("empty");
     empty.textContent = strings.empty;
     empty.hidden = false;
   }
 
+  var lastProblems = [];
+
+  /** The diagram element under a DOM target: { id, edge }. */
+  function elementAt(target) {
+    var node = target && target.closest && target.closest("[data-id]");
+    if (!node || !view.svg || !view.svg.contains(node)) return null;
+    return { id: node.getAttribute("data-id"), edge: node.getAttribute("data-et") === "edge" || !!node.closest(".edgeLabel") };
+  }
+
   function drawMarkers(problems) {
+    lastProblems = problems || [];
     if (!view.svg) return;
     var NS = "http://www.w3.org/2000/svg";
     var old = view.svg.querySelector("#odg-overlay");
@@ -906,9 +916,9 @@
     });
     viewport.addEventListener("mousedown", function (e) {
       if (e.button !== 0) return;
-      // dragging a node moves it only in the drag-enabled layouts (the menu says "drag"); a plain
-      // click must never rewrite the file, so auto/ELK layouts just select and pan
-      var draggable = editing && view.graph && (view.layoutMode === "elk-interactive" || view.layoutMode === "exact");
+      // dragging a node moves it (graph diagrams, edit mode); in auto/ELK layouts the first move switches the
+      // diagram to ELK interactive so the dropped position is kept. A plain click never rewrites the file.
+      var draggable = editing && view.graph;
       var node = draggable && e.target.closest && e.target.closest("g.node[data-id]");
       if (node) {
         drag = { node: node, id: node.getAttribute("data-id"), centre: nodeCentre(node), transform: node.getAttribute("transform") || "", x: e.clientX, y: e.clientY, moved: false };
@@ -949,15 +959,42 @@
       if (spotlight.active) clearSpotlight();
       var marker = e.target.closest && e.target.closest(".odg-marker");
       if (marker) return post({ op: "select-problem", index: +marker.getAttribute("data-problem") });
-      var node = e.target.closest && e.target.closest("[data-id]");
-      var isEdge = node && (node.getAttribute("data-et") === "edge" || !!node.closest(".edgeLabel"));
-      if (node && !isEdge) {
-        if (window.odgPalette) window.odgPalette.select(node.getAttribute("data-id"));
-        highlight(node.getAttribute("data-id"));
-        post({ op: "select", element_id: node.getAttribute("data-id") });
-      }
-      if (node && editing && window.odgPalette) window.odgPalette.inspect(node.getAttribute("data-id"), isEdge, e.clientX, e.clientY);
+      // a click only selects (double-click renames, right-click opens the menu, dragging moves)
+      var hit = elementAt(e.target);
+      if (!hit) return;
+      if (window.odgPalette) window.odgPalette.select(hit.id);
+      highlight(hit.id);
+      post({ op: "select", element_id: hit.id });
     });
+    viewport.addEventListener("dblclick", function (e) {
+      var hit = elementAt(e.target);
+      if (hit && editing && window.odgPalette && window.odgPalette.rename) window.odgPalette.rename(hit.id, hit.edge, e.clientX, e.clientY);
+    });
+    // our own menu instead of the webview's (Reload / Inspect)
+    document.addEventListener("contextmenu", function (e) {
+      if (e.target.closest && e.target.closest("input, textarea")) return;
+      e.preventDefault();
+      var hit = elementAt(e.target);
+      if (!hit || !window.odgPalette || !window.odgPalette.contextMenu) return;
+      window.odgPalette.select(hit.id);
+      highlight(hit.id);
+      post({ op: "select", element_id: hit.id });
+      window.odgPalette.contextMenu(hit.id, hit.edge, e.clientX, e.clientY, editing);
+    });
+    // problem markers say what they mean on hover
+    var tip = document.getElementById("marker-tip");
+    viewport.addEventListener("mousemove", function (e) {
+      var m = e.target.closest && e.target.closest(".odg-marker");
+      if (!m || drag) { tip.hidden = true; return; }
+      var p = (lastProblems || []).filter(function (x) { return String(x.index) === m.getAttribute("data-problem"); })[0];
+      if (!p) { tip.hidden = true; return; }
+      tip.textContent = p.index + " · " + p.message + (p.hint ? "\n→ " + p.hint : "");
+      tip.style.whiteSpace = "pre-line";
+      tip.hidden = false;
+      tip.style.left = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8) + "px";
+      tip.style.top = Math.min(e.clientY + 16, window.innerHeight - tip.offsetHeight - 8) + "px";
+    });
+    viewport.addEventListener("mouseleave", function () { tip.hidden = true; });
     viewport.addEventListener("wheel", function (e) {
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
@@ -976,7 +1013,7 @@
       else if (act === "fit") fit();
     });
     window.addEventListener("resize", function () { if (view.svg && view.fitted) fit(); });
-    document.getElementById("modebar").addEventListener("click", function (e) {
+    document.getElementById("pal-fixed").addEventListener("click", function (e) {
       var b = e.target.closest && e.target.closest("button");
       if (!b || b.disabled) return;
       if (b.getAttribute("data-mode")) setEditing(b.getAttribute("data-mode") === "edit", true);

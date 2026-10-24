@@ -679,10 +679,52 @@ pub fn apply(src: &str, action: &str, params: &Value) -> Result<String, String> 
         ("delete", Kind::Flowchart) => flow_delete(src, param(params, "id")?),
         ("delete", Kind::Sequence) => seq_delete(src, param(params, "id")?),
         ("delete", k) => ident_delete(src, param(params, "id")?, k),
+        ("style", Kind::Flowchart | Kind::Class) => set_style(src, param(params, "id")?, params),
         ("edge_label", Kind::Flowchart) => flow_edge(src, param(params, "from")?, param(params, "to")?, index, Some(params.get("label").and_then(Value::as_str))),
         ("edge_delete", Kind::Flowchart) => flow_edge(src, param(params, "from")?, param(params, "to")?, index, None),
         (a, k) => Err(format!("`{a}` is not available for {} diagrams", k.id())),
     }
+}
+
+/// Colours of one element (`style <id> fill:…,stroke:…,color:…`): given keys are set, an empty value
+/// removes the key, and the line goes away when nothing is left.
+fn set_style(src: &str, id: &str, params: &Value) -> Result<String, String> {
+    if id.trim().is_empty() || id.contains(char::is_whitespace) {
+        return Err(format!("invalid element id `{id}`"));
+    }
+    let re = Regex::new(&format!(r"^(\s*)style\s+{}\s+(.*?)\s*;?\s*$", regex::escape(id))).unwrap();
+    let lines: Vec<&str> = src.lines().collect();
+    let found = lines.iter().position(|l| re.is_match(l));
+    let mut props: Vec<(String, String)> = found
+        .and_then(|i| re.captures(lines[i]))
+        .map(|c| {
+            c[2].split(',')
+                .filter_map(|kv| kv.split_once(':').map(|(k, v)| (k.trim().to_string(), v.trim().to_string())))
+                .collect()
+        })
+        .unwrap_or_default();
+    for key in ["fill", "stroke", "color"] {
+        let Some(v) = params.get(key).and_then(Value::as_str) else { continue };
+        let v = v.trim();
+        if !v.is_empty() && !Regex::new(r"^#?[0-9A-Za-z(),.% ]{1,40}$").unwrap().is_match(v) {
+            return Err(format!("invalid colour `{v}`"));
+        }
+        props.retain(|(k, _)| k != key);
+        if !v.is_empty() {
+            props.push((key.to_string(), v.to_string()));
+        }
+    }
+    let line = (!props.is_empty()).then(|| format!("    style {id} {}", props.iter().map(|(k, v)| format!("{k}:{v}")).collect::<Vec<_>>().join(",")));
+    let mut out: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+    match (found, line) {
+        (Some(i), Some(l)) => out[i] = l,
+        (Some(i), None) => {
+            out.remove(i);
+        }
+        (None, Some(l)) => out.push(l),
+        (None, None) => {}
+    }
+    Ok(out.join("\n") + "\n")
 }
 
 #[cfg(test)]
@@ -691,6 +733,17 @@ mod tests {
     use serde_json::json;
 
     const FLOW: &str = "flowchart LR\n    a([Start]) --> b{Valid?}\n    b -->|yes| c[Save] --> d[(DB)]\n    b -- no --> e[Retry]\n    e -.-> a\n    subgraph g [Group]\n        c\n    end\n    style c fill:#f9f\n    class c,e hot\n%% @odg pos c 10,20\n";
+
+    #[test]
+    fn colours_set_update_and_clear() {
+        let s1 = apply(FLOW, "style", &json!({"id": "a", "fill": "#ffe0e0", "stroke": "#c00"})).unwrap();
+        assert!(s1.contains("    style a fill:#ffe0e0,stroke:#c00"), "{s1}");
+        let s2 = apply(&s1, "style", &json!({"id": "c", "color": "#000"})).unwrap();
+        assert!(s2.contains("    style c fill:#f9f,color:#000"), "{s2}");
+        let s3 = apply(&s2, "style", &json!({"id": "a", "fill": "", "stroke": ""})).unwrap();
+        assert!(!s3.contains("style a "), "{s3}");
+        assert!(apply(FLOW, "style", &json!({"id": "a", "fill": "red;}"})).is_err());
+    }
 
     #[test]
     fn rename_and_reshape_flowchart() {

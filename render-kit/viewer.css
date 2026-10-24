@@ -278,44 +278,48 @@ button:disabled { opacity: 0.5; cursor: default; }
 .odg-pulse { --glow: var(--agent); animation: odg-pulse 0.8s ease-in-out 3; }
 .odg-pulse rect, .odg-pulse polygon, .odg-pulse circle, .odg-pulse ellipse, .odg-pulse path { stroke: var(--agent) !important; stroke-width: 3px !important; }
 
-/* edit / view mode and undo / redo */
-#modebar {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel);
-  z-index: 3;
+/* top bar: mode, undo / redo, creation */
+#pal-fixed, #pal-ctors { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+#pal-ctors[hidden], #pal-ctor-sep[hidden] { display: none; }
+#pal-fixed button {
+  display: inline-flex; align-items: center; gap: 5px; height: 28px; min-width: 28px; padding: 0 8px;
+  border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--fg); font: inherit; cursor: pointer;
 }
-#modebar[hidden] { display: none; }
-#modebar button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 26px;
-  min-width: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--fg);
-  font: inherit;
-  cursor: pointer;
-}
-#modebar svg { width: 15px; height: 15px; flex: none; }
-#modebar .seg { display: inline-flex; margin-right: 4px; }
-#modebar .seg button { border-radius: 0; }
-#modebar .seg button:first-child { border-radius: 6px 0 0 6px; }
-#modebar .seg button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
-#modebar .seg button[aria-checked="true"] { background: var(--info); border-color: var(--info); color: #fff; }
-#modebar button:disabled { opacity: 0.35; cursor: default; }
+#pal-fixed svg { width: 15px; height: 15px; flex: none; }
+#pal-fixed .seg { display: inline-flex; }
+#pal-fixed .seg button { border-radius: 0; }
+#pal-fixed .seg button:first-child { border-radius: 6px 0 0 6px; }
+#pal-fixed .seg button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+#pal-fixed .seg button[aria-checked="true"] { background: var(--info); border-color: var(--info); color: #fff; }
+#pal-fixed button:disabled { opacity: 0.35; cursor: default; }
 /* view mode: nothing that edits */
-body.view-mode #palette, body.view-mode #ctor-form, body.view-mode #layout-box, body.view-mode #undo-btn, body.view-mode #redo-btn { display: none !important; }
+body.view-mode #pal-ctors, body.view-mode #pal-ctor-sep, body.view-mode #ctor-form, body.view-mode #layout-box,
+body.view-mode #undo-btn, body.view-mode #redo-btn, body.view-mode #pal-fixed .pal-sep { display: none !important; }
 
 /* invisible, wider click target along each arrow */
 .odg-hit { fill: none; stroke: transparent; stroke-width: var(--odg-hit, 14px); pointer-events: stroke; cursor: pointer; }
+
+/* right-click menu */
+#ctx-menu {
+  position: absolute; z-index: 8; min-width: 190px; padding: 4px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22); font: inherit;
+}
+#ctx-menu[hidden] { display: none; }
+#ctx-menu .ctx-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; height: 28px; padding: 0 10px; border: 0; border-radius: 5px;
+  background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; position: relative;
+}
+#ctx-menu .ctx-item:hover, #ctx-menu .ctx-item.open { background: color-mix(in srgb, var(--info) 14%, transparent); }
+#ctx-menu .ctx-item.danger { color: var(--error); }
+#ctx-menu .ctx-item .ctx-more { margin-left: auto; color: var(--muted); }
+#ctx-menu .ctx-sep { height: 1px; margin: 4px 6px; background: var(--border); }
+#ctx-menu .ctx-head { padding: 4px 10px 6px; color: var(--muted); font-size: 12px; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+#ctx-menu .ctx-sub { position: absolute; left: 100%; top: -4px; margin-left: 4px; }
+#ctx-menu .ctx-swatches { display: grid; grid-template-columns: repeat(5, 22px); gap: 6px; padding: 6px 8px; }
+#ctx-menu .ctx-swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 1px solid var(--border); cursor: pointer; }
+/* problem marker: what it means, on hover */
+#marker-tip {
+  position: absolute; z-index: 7; max-width: 320px; padding: 6px 9px; border-radius: 6px; pointer-events: none;
+  background: #1f2328; color: #fff; font-size: 12px; line-height: 1.35; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+#marker-tip[hidden] { display: none; }
