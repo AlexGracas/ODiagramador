@@ -29,6 +29,17 @@ hint-E_BACKEND = Em servidores Linux rode com um display (ex.: `xvfb-run odg mcp
 problem-W_ORPHAN_NODE = "{ $label }" não está conectado a nada.
 hint-W_ORPHAN_NODE = Ligue-o com uma aresta (ex.: `{ $id } --> Outro`) ou remova-o se sobrou.
 
+problem-W_EDGE_TOO_SHORT = A seta { $edge } tem só { $length } px: não há espaço para a ponta, que pode aparecer invertida ou sumir.
+hint-W_EDGE_TOO_SHORT = Deixe espaço entre os dois elementos (em diagramas de blocos, ponha `space` entre eles ou coloque-os em linhas diferentes) ou mude a direção.
+problem-W_EDGE_THROUGH_NODE = A seta { $edge } passa por cima de "{ $node }".
+hint-W_EDGE_THROUGH_NODE = Reordene os elementos, mude a direção ou (diagramas de grafo) use arrange_diagram com ELK / camadas para a seta contornar.
+problem-W_LABEL_OVER_NODE = O rótulo da seta "{ $label }" ficou por cima de "{ $node }".
+hint-W_LABEL_OVER_NODE = Abra espaço entre os elementos, encurte o rótulo ou leve o texto para uma nota.
+problem-W_LABEL_OVERLAP = Os rótulos das setas "{ $a }" e "{ $b }" ficaram um sobre o outro.
+hint-W_LABEL_OVERLAP = Afaste as setas (direção, ordem, layout ELK) ou encurte um dos rótulos.
+problem-W_EDGE_CROSSINGS = { $count } cruzamento(s) de setas: { $pairs }.
+hint-W_EDGE_CROSSINGS = Menos cruzamentos facilitam a leitura: reordene as declarações, mude a direção ou teste arrange_diagram mode=elk; stats.crossings permite comparar versões.
+summary-crossings = { $count } cruzamento(s) de setas.
 problem-W_OVERLAP = "{ $a }" está sobreposto a "{ $b }".
 hint-W_OVERLAP = Mude a direção (TB/LR), mova um dos nós para um subgraph ou encurte os textos.
 

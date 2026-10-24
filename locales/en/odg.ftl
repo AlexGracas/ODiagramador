@@ -29,6 +29,17 @@ hint-E_BACKEND = On Linux servers run under a display (e.g. `xvfb-run odg mcp`);
 problem-W_ORPHAN_NODE = "{ $label }" is not connected to anything.
 hint-W_ORPHAN_NODE = Connect it with an edge (e.g. `{ $id } --> Other`) or remove it if it is leftover.
 
+problem-W_EDGE_TOO_SHORT = The arrow { $edge } is only { $length } px long: there is no room for its arrowhead, which can look reversed or disappear.
+hint-W_EDGE_TOO_SHORT = Leave room between the two elements (in block diagrams add `space` between them or put them in different rows), or change the direction.
+problem-W_EDGE_THROUGH_NODE = The arrow { $edge } is drawn across "{ $node }".
+hint-W_EDGE_THROUGH_NODE = Reorder the elements, change the direction, or (graph diagrams) use arrange_diagram with ELK / layers so the arrow goes around.
+problem-W_LABEL_OVER_NODE = The arrow label "{ $label }" is drawn over "{ $node }".
+hint-W_LABEL_OVER_NODE = Make room between the elements, shorten the label, or move the text into a note.
+problem-W_LABEL_OVERLAP = The arrow labels "{ $a }" and "{ $b }" are drawn over each other.
+hint-W_LABEL_OVERLAP = Spread the arrows apart (direction, order, ELK layout) or shorten one of the labels.
+problem-W_EDGE_CROSSINGS = { $count } arrow crossing(s): { $pairs }.
+hint-W_EDGE_CROSSINGS = Fewer crossings read better: reorder declarations, change the direction, or try arrange_diagram mode=elk; stats.crossings lets you compare versions.
+summary-crossings = { $count } arrow crossing(s).
 problem-W_OVERLAP = "{ $a }" overlaps "{ $b }".
 hint-W_OVERLAP = Change the direction (TB/LR), move one node into a subgraph or shorten the labels.
 

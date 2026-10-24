@@ -9,6 +9,7 @@ use std::io::{BufRead, Read, Write};
 
 use base64::Engine as _;
 use odg_core::analyze::{excerpt, Analysis};
+use odg_core::engine::RenderBackend as _;
 use odg_core::model::RawRender;
 use odg_core::channel::Message;
 use odg_core::workspace::{Actor, Workspace};
@@ -298,10 +299,22 @@ impl Server {
                     let y = p.get("y").and_then(Value::as_f64).ok_or(ToolError(format!("position of {id} needs `y`")))?;
                     src = odg_core::source::set_node_position(&src, id, x, y).map_err(ToolError)?;
                 }
+                let mut numbered = false;
                 for l in args.get("layers").and_then(Value::as_array).into_iter().flatten() {
                     let id = l.get("id").and_then(Value::as_str).ok_or(ToolError("each layer needs `id`".into()))?;
-                    let layer = l.get("layer").and_then(Value::as_str).filter(|v| *v != "none");
-                    src = odg_core::source::set_node_layer(&src, id, layer).map_err(ToolError)?;
+                    let layer = match l.get("layer") {
+                        Some(Value::Number(n)) => n.as_u64().map(|n| n.to_string()),
+                        Some(Value::String(v)) if v != "none" => Some(v.clone()),
+                        _ => None,
+                    };
+                    numbered |= layer.as_deref().is_some_and(|v| v.parse::<u32>().is_ok());
+                    src = odg_core::source::set_node_layer(&src, id, layer.as_deref()).map_err(ToolError)?;
+                }
+                // layer constraints need ELK
+                if (numbered || args.get("layers").is_some_and(|l| l.as_array().is_some_and(|a| !a.is_empty())))
+                    && odg_core::source::layout_directives(&src).mode == "auto"
+                {
+                    src = odg_core::source::set_layout_mode(&src, "elk").map_err(ToolError)?;
                 }
                 self.save_and_report(path, &src, args)
             }
@@ -335,6 +348,9 @@ impl Server {
                         {"type": "text", "text": a.report.to_markdown()},
                         {"type": "text", "text": svg},
                     ]}));
+                }
+                if s("focus").is_some() || args.get("region").is_some() {
+                    return self.render_zoomed(&a, args);
                 }
                 let annotated = b("annotated", true);
                 let png = if annotated { a.annotated_png.clone().or(a.png.clone()) } else { a.png.clone().or(a.annotated_png.clone()) };
@@ -574,6 +590,56 @@ impl Server {
         }
     }
 
+    /// render_diagram with `focus` (element / subgraph id) or `region`: only that part, at a legible scale.
+    fn render_zoomed(&self, a: &Analysis, args: &Value) -> ToolResult {
+        use odg_core::model::BBox;
+        let svg = a.svg.clone().ok_or(ToolError(a.report.to_markdown()))?;
+        let model = &a.raw.model;
+        let (target, what) = if let Some(id) = args.get("focus").and_then(Value::as_str) {
+            let b = model.node(id).and_then(|n| n.bbox).ok_or_else(|| {
+                let ids: Vec<&str> = model.groups.iter().chain(model.nodes.iter()).filter(|n| n.bbox.is_some()).map(|n| n.id.as_str()).take(40).collect();
+                ToolError(format!("`{id}` has no position in the drawing. Elements you can focus: {}", ids.join(", ")))
+            })?;
+            (b, format!("`{id}`"))
+        } else {
+            let r = args.get("region").cloned().unwrap_or_default();
+            let f = |k: &str| r.get(k).and_then(Value::as_f64);
+            match (f("x"), f("y"), f("w").or(f("width")), f("h").or(f("height"))) {
+                (Some(x), Some(y), Some(w), Some(h)) if w > 0.0 && h > 0.0 => (BBox { x, y, w, h }, "the region".to_string()),
+                _ => return Err(ToolError("`region` needs x, y, w, h (same coordinates as inspect_diagram)".into())),
+            }
+        };
+        let pad = args.get("padding").and_then(Value::as_f64).unwrap_or(24.0).max(0.0);
+        let mut region = BBox { x: target.x - pad, y: target.y - pad, w: target.w + 2.0 * pad, h: target.h + 2.0 * pad };
+        if let Some(vb) = a.raw.view_box {
+            let x0 = region.x.max(vb.x);
+            let y0 = region.y.max(vb.y);
+            region = BBox { x: x0, y: y0, w: (region.x + region.w).min(vb.x + vb.w) - x0, h: (region.y + region.h).min(vb.y + vb.h) - y0 };
+        }
+        // about 1600 px wide, never past 4000 px on either side
+        let fit = (1600.0 / region.w.max(1.0)).clamp(1.0, 6.0);
+        let scale = args.get("scale").and_then(Value::as_f64).unwrap_or(fit).min(4000.0 / region.w.max(region.h).max(1.0)).max(0.25);
+        let dark = args.get("theme").and_then(Value::as_str) == Some("dark");
+        let png = self.renderer.rasterize(&odg_core::analyze::crop_svg(&svg, region), scale, if dark { "#0d1117" } else { "#ffffff" }).map_err(ToolError)?;
+        let inside: Vec<String> = a
+            .report
+            .problems
+            .iter()
+            .filter(|p| p.bbox.is_some_and(|b| b.intersection(&region) > 0.0))
+            .map(|p| format!("{}. [{}] {}", p.index, p.code, p.message))
+            .collect();
+        let mut text = format!(
+            "Zoom on {what}: region {:.0},{:.0} {:.0}×{:.0} of a {:.0}×{:.0} drawing, rendered at {scale:.1}×.\n",
+            region.x, region.y, region.w, region.h, a.raw.width, a.raw.height
+        );
+        if inside.is_empty() {
+            text.push_str("No reported problem inside this region.\n");
+        } else {
+            text.push_str(&format!("Problems inside this region:\n{}\n", inside.join("\n")));
+        }
+        Ok(json!({"content": [{"type": "text", "text": text}, image(&png)], "structuredContent": {"region": region, "scale": scale, "report": a.report}}))
+    }
+
     fn source_arg(&self, args: &Value) -> Result<(Option<String>, String), ToolError> {
         match (args.get("path").and_then(Value::as_str), args.get("source").and_then(Value::as_str)) {
             (_, Some(src)) => Ok((args.get("path").and_then(Value::as_str).map(str::to_string), src.to_string())),
@@ -641,6 +707,15 @@ impl Server {
             t.push_str(&format!("\nSource around line {line}:\n```\n{}\n```\n", excerpt(source, line, 3)));
         }
         t.push_str(&next_step(r, Lang::parse(&r.lang)));
+        if a.raw.width > 2000.0 || a.raw.height > 2000.0 {
+            let groups: Vec<&str> = a.raw.model.groups.iter().map(|g| g.id.as_str()).take(12).collect();
+            t.push_str(&format!(
+                "\nThe drawing is {:.0}×{:.0} px: image viewers shrink it, so small text gets unreadable. Look at a part with render_diagram(focus=<element or subgraph id>){}.\n",
+                a.raw.width,
+                a.raw.height,
+                if groups.is_empty() { String::new() } else { format!(" — subgraphs: {}", groups.join(", ")) }
+            ));
+        }
         if let Some(rel) = rel {
             let p = &r.previews;
             t.push_str(&format!("\nFiles: source `{rel}`"));
@@ -919,11 +994,11 @@ fn tool_definitions() -> Value {
             &["path", "edits"]),
          "annotations": write},
         {"name": "arrange_diagram", "title": "Fix layout",
-         "description": "Change how a graph diagram (flowchart, state, class, ER, requirement) is laid out, stored as `%% @odg` comments so the file stays plain Mermaid. mode: auto (Mermaid default) | elk (ELK automatic) | elk-interactive (positions are hints: ELK keeps their layer and order and routes the edges) | exact (nodes stay exactly at the given positions). positions: node centres in the same coordinates as inspect_diagram's bounding boxes (centre = x + w/2, y + h/2); giving positions switches auto/elk to elk-interactive. layers: pin a node to the first or last layer. Returns the report and the new image.",
+         "description": "Change how a graph diagram (flowchart, state, class, ER, requirement) is laid out, stored as `%% @odg` comments so the file stays plain Mermaid. mode: auto (Mermaid default) | elk (ELK automatic) | elk-interactive (positions are hints: ELK keeps their layer and order and routes the edges) | exact (nodes stay exactly at the given positions). positions: node centres in the same coordinates as inspect_diagram's bounding boxes (centre = x + w/2, y + h/2); giving positions switches auto/elk to elk-interactive. layers: pin a node or subgraph to the first/last layer, or give numbers (0, 1, 2…) to fix the order of the layers even when some arrows point backwards. Returns the report and the new image.",
          "inputSchema": with(json!({"path": {"type": "string"},
             "mode": {"type": "string", "enum": ["auto", "elk", "elk-interactive", "exact"]},
             "positions": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}}, "required": ["id", "x", "y"]}},
-            "layers": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "layer": {"type": "string", "enum": ["first", "last", "none"]}}, "required": ["id", "layer"]}},
+            "layers": {"type": "array", "description": "Pin layers: first/last, or numbers to fix the order of layers (0 before 1 before 2…, nodes or subgraphs; arrows going back no longer reorder them). Switches mode auto to elk.", "items": {"type": "object", "properties": {"id": {"type": "string"}, "layer": {"description": "first | last | none | 0, 1, 2…", "anyOf": [{"type": "string"}, {"type": "integer", "minimum": 0}]}}, "required": ["id", "layer"]}},
             "reset_positions": {"type": "boolean", "description": "Remove every stored position first"}}), &["path"]),
          "annotations": write},
         {"name": "add_element", "title": "Add element",
@@ -939,11 +1014,14 @@ fn tool_definitions() -> Value {
          "inputSchema": with(json!({"source": {"type": "string"}}), &["source"]),
          "annotations": ro},
         {"name": "render_diagram", "title": "See diagram",
-         "description": "Render a saved diagram (path) or inline source to an image so you can look at the result.",
+         "description": "Render a saved diagram (path) or inline source to an image so you can look at the result. For big drawings, focus=<element or subgraph id> (or region) renders just that part at a legible scale.",
          "inputSchema": with(json!({"path": {"type": "string"}, "source": {"type": "string"},
             "format": {"type": "string", "enum": ["png", "svg"]},
             "annotated": {"type": "boolean", "description": "Draw numbered problem markers. Default true."},
-            "scale": {"type": "number", "description": "PNG scale factor (0.5–4, default 1.5)"}}), &[]),
+            "scale": {"type": "number", "description": "PNG scale factor (0.5–4, default 1.5; with focus/region: chosen for ~1600 px)"},
+            "focus": {"type": "string", "description": "Zoom: render only this element or subgraph (id), legibly, with the problems inside it"},
+            "region": {"type": "object", "description": "Zoom: render only this rectangle (inspect_diagram coordinates)", "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "w": {"type": "number"}, "h": {"type": "number"}}},
+            "padding": {"type": "number", "description": "Margin around focus/region (default 24)"}}), &[]),
          "annotations": ro},
         {"name": "inspect_diagram", "title": "Describe layout",
          "description": "Text description of the rendered layout (nodes with positions, edges, groups, problems) for agents without vision.",

@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use regex::Regex;
 
+use crate::geometry;
 use crate::i18n::{t, Arg, Lang};
 use crate::model::{BBox, Node, RawRender, SourceError};
 use crate::report::{Problem, Severity};
@@ -152,8 +153,21 @@ pub fn lint(src: &str, raw: &RawRender, lang: Lang, cfg: &LintConfig) -> Vec<Pro
             linked.insert(e.to.as_str());
         }
         let sev = if kind.starts_with("class") || kind.starts_with("er") { Severity::Info } else { Severity::Warning };
+        // an arrow to or from a subgraph connects everything inside it
+        let parent_of = |id: &str| model.node(id).and_then(|n| n.parent.clone());
+        let connected = |id: &str| {
+            let mut cur = Some(id.to_string());
+            for _ in 0..32 {
+                let Some(c) = cur else { return false };
+                if linked.contains(c.as_str()) {
+                    return true;
+                }
+                cur = parent_of(&c);
+            }
+            false
+        };
         for n in &model.nodes {
-            if linked.contains(n.id.as_str()) || n.id.ends_with("_start") || n.id.ends_with("_end") {
+            if connected(&n.id) || n.id.ends_with("_start") || n.id.ends_with("_end") {
                 continue;
             }
             let label = display(n);
@@ -187,6 +201,45 @@ pub fn lint(src: &str, raw: &RawRender, lang: Lang, cfg: &LintConfig) -> Vec<Pro
                 out.push(d);
             }
         }
+    }
+
+    // ---- how edges are drawn (sampled paths from the render-kit)
+    let name = |id: &str| model.node(id).map(display).unwrap_or_else(|| id.to_string());
+    let arrow = |e: &crate::model::Edge| format!("{} → {}", name(&e.from), name(&e.to));
+    let from_node = |e: &crate::model::Edge| model.node(&e.from).cloned().unwrap_or_default();
+    for i in geometry::short_edges(model) {
+        let e = &model.edges[i];
+        let mut d = Draft::new(lang, Severity::Warning, "W_EDGE_TOO_SHORT", &[("edge", arrow(e).into()), ("length", e.length.unwrap_or(0.0).round().into())])
+            .at_node(src, &from_node(e));
+        d.related = vec![e.to.clone()];
+        d.bbox = e.bbox.or(d.bbox);
+        out.push(d);
+    }
+    for (ei, ni) in geometry::edges_through_nodes(model).into_iter().take(12) {
+        let (e, n) = (&model.edges[ei], &model.nodes[ni]);
+        let mut d = Draft::new(lang, Severity::Warning, "W_EDGE_THROUGH_NODE", &[("edge", arrow(e).into()), ("node", display(n).into())]).at_node(src, n);
+        d.related = vec![e.from.clone(), e.to.clone()];
+        out.push(d);
+    }
+    for (ei, ni, _) in geometry::labels_over_nodes(model).into_iter().take(12) {
+        let (e, n) = (&model.edges[ei], &model.nodes[ni]);
+        let mut d = Draft::new(lang, Severity::Warning, "W_LABEL_OVER_NODE", &[("label", e.label.as_str().into()), ("node", display(n).into())]).at_node(src, n);
+        d.bbox = e.label_bbox.map(|l| n.bbox.map(|b| b.union(&l)).unwrap_or(l));
+        out.push(d);
+    }
+    for (i, j) in geometry::overlapping_labels(model).into_iter().take(12) {
+        let (a, b) = (&model.edges[i], &model.edges[j]);
+        let mut d = Draft::new(lang, Severity::Warning, "W_LABEL_OVERLAP", &[("a", a.label.as_str().into()), ("b", b.label.as_str().into())])
+            .at_node(src, &from_node(a));
+        d.bbox = a.label_bbox.zip(b.label_bbox).map(|(x, y)| x.union(&y));
+        out.push(d);
+    }
+    let crossings = geometry::crossings(model);
+    if let Some((_, _, at)) = crossings.first() {
+        let pairs: Vec<String> = crossings.iter().take(5).map(|(a, b, _)| format!("{} × {}", arrow(&model.edges[*a]), arrow(&model.edges[*b]))).collect();
+        let mut d = Draft::new(lang, Severity::Info, "W_EDGE_CROSSINGS", &[("count", crossings.len().into()), ("pairs", pairs.join("; ").into())]);
+        d.bbox = Some(BBox { x: at[0] - 12.0, y: at[1] - 12.0, w: 24.0, h: 24.0 });
+        out.push(d);
     }
 
     // ---- labels

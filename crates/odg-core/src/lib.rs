@@ -6,6 +6,7 @@ pub mod channel;
 pub mod construct;
 pub mod edit;
 pub mod engine;
+pub mod geometry;
 pub mod i18n;
 pub mod kinds;
 pub mod lint;

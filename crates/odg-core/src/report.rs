@@ -44,6 +44,9 @@ pub struct Stats {
     pub width: f64,
     pub height: f64,
     pub lines: usize,
+    /// Edge crossings in the drawing (lower is easier to read; compare versions with it).
+    #[serde(default)]
+    pub crossings: usize,
 }
 
 /// Workspace-relative paths of the files written next to the report.

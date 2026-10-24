@@ -78,6 +78,14 @@ pub struct Edge {
     pub label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bbox: Option<BBox>,
+    /// Points along the drawn path (user coordinates), for crossings and edges through nodes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub points: Vec<[f64; 2]>,
+    /// Drawn length of the path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_bbox: Option<BBox>,
 }
 
 /// Engine-neutral structure. Mermaid fills it today; future UML engines produce the same shape,

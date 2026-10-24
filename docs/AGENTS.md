@@ -58,10 +58,10 @@ copy ready-made configs for each client. Traffic is plain HTTP: outside a truste
 | `update_diagram(path, source)` | Replace the whole file → report + image. |
 | `patch_diagram(path, edits[{old_text,new_text}])` | Small fixes; each `old_text` must occur exactly once. |
 | `validate_diagram(source)` | Check text without saving. |
-| `render_diagram(path\|source, format, annotated)` | Look at the result again (PNG or SVG). |
+| `render_diagram(path\|source, format, annotated, focus?, region?)` | Look at the result again (PNG or SVG). Big drawings: `focus=<element or subgraph id>` (or `region`) renders only that part, legibly, listing the problems inside it. |
 | `add_element(path, construct, params)` | Insert a well-formed element with the desktop palette's constructors (`flow.node`, `flow.edge`, `seq.message`, `class.relation`, `er.relation`, `direction`…); see the tool description for every construct and parameter. |
 | `edit_element(path, action, params)` | Rename, reshape or delete an existing element (`rename`, `shape`, `delete`, `edge_label`, `edge_delete`) without rewriting the file — deleting a node also removes its connections and keeps the neighbours' definitions. |
-| `arrange_diagram(path, mode?, positions?, layers?, reset_positions?)` | Fix the layout of graph diagrams: `elk`, `elk-interactive` (positions as hints) or `exact` (exact positions). Stored as `%% @odg` comments — see `get_syntax_help("layout")`. |
+| `arrange_diagram(path, mode?, positions?, layers?, reset_positions?)` | Fix the layout of graph diagrams: `elk`, `elk-interactive` (positions as hints) or `exact` (exact positions); `layers` pins first/last or fixes the order of layers with numbers (0, 1, 2…, nodes or subgraphs). Stored as `%% @odg` comments — see `get_syntax_help("layout")`. |
 | `inspect_diagram(path\|source)` | Text description of the layout (nodes with positions, edges, groups) — for models without vision. |
 | `list_diagrams()` / `get_diagram(path)` | Status of every diagram / numbered source + last report + open comments. |
 | `get_feedback(path?)` / `resolve_feedback(id, resolution)` | Read and close the human's comments. |
@@ -125,6 +125,11 @@ instead of rewriting the source. Coordinates are node centres in the same space 
 | `E_BACKEND` | error | The renderer (system WebView) is unavailable. |
 | `W_ORPHAN_NODE` | warning (info for class/ER) | Node without edges. |
 | `W_OVERLAP` | warning | Two nodes overlap in the rendered layout. |
+| `W_EDGE_THROUGH_NODE` | warning | An arrow is drawn across a node that is not one of its ends. |
+| `W_EDGE_TOO_SHORT` | warning | An arrow is too short for its arrowhead (it can look reversed or vanish), e.g. adjacent blocks. |
+| `W_LABEL_OVER_NODE` | warning | An arrow label is drawn over a node's text. |
+| `W_LABEL_OVERLAP` | warning | Two arrow labels are drawn over each other. |
+| `W_EDGE_CROSSINGS` | info | Arrow crossings (count and pairs); `stats.crossings` lets you compare versions. |
 | `W_LABEL_OVERFLOW` | warning | Text does not fit inside its shape. |
 | `W_DUPLICATE_LABEL` | warning | Different ids share a label (usually the same node declared twice). |
 | `W_LONG_LABEL` | info | Label over 60 characters. |

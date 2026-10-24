@@ -55,6 +55,7 @@ pub fn build_report(src: &str, raw: &RawRender, engine: &str, lang: Lang, cfg: &
         width: raw.width,
         height: raw.height,
         lines: src.lines().count(),
+        crossings: crate::geometry::crossings(&raw.model).len(),
     };
     let summary = if errors > 0 {
         t(lang, "summary-invalid", &[("errors", Arg::from(errors))])
@@ -69,7 +70,7 @@ pub fn build_report(src: &str, raw: &RawRender, engine: &str, lang: Lang, cfg: &
                 ("edges", Arg::from(stats.edges)),
                 ("problems", Arg::Str(&problems_txt)),
             ],
-        )
+        ) + &if stats.crossings > 0 { format!(" {}", t(lang, "summary-crossings", &[("count", Arg::from(stats.crossings))])) } else { String::new() }
     };
     Report {
         path: None,
@@ -167,6 +168,22 @@ fn color(sev: Severity) -> &'static str {
 }
 
 /// Draws numbered markers around problem areas plus a legend band under the diagram.
+/// The same drawing showing only `region` (user coordinates, as in the model's bounding boxes):
+/// the root viewBox, width and height are replaced, so it can be rasterized at a larger scale.
+pub fn crop_svg(svg: &str, region: BBox) -> String {
+    let Some(start) = svg.find("<svg") else { return svg.to_string() };
+    let Some(end) = svg[start..].find('>').map(|e| start + e) else { return svg.to_string() };
+    let tag = &svg[start..end];
+    let attr = regex::Regex::new(r#"\s(viewBox|width|height|style)="[^"]*""#).unwrap();
+    let cleaned = attr.replace_all(tag, "");
+    let r = |v: f64| (v * 10.0).round() / 10.0;
+    let new_tag = format!(
+        r#"{cleaned} viewBox="{} {} {} {}" width="{}" height="{}""#,
+        r(region.x), r(region.y), r(region.w), r(region.h), r(region.w), r(region.h)
+    );
+    format!("{}{}{}", &svg[..start], new_tag, &svg[end..])
+}
+
 pub fn annotate_svg(svg: &str, view_box: Option<BBox>, problems: &[Problem]) -> String {
     let vb = view_box.unwrap_or(BBox { x: 0.0, y: 0.0, w: 800.0, h: 600.0 });
     let margin = 20.0;
@@ -356,6 +373,18 @@ pub fn excerpt(src: &str, line: u32, radius: usize) -> String {
 /// Line/col helpers re-exported for consumers that only have the source.
 pub fn first_error_excerpt(src: &str, report: &Report) -> Option<String> {
     report.first_error().and_then(|p| p.line).map(|l| excerpt(src, l, 3)).filter(|_| !source::is_blank(src))
+}
+
+#[cfg(test)]
+mod crop_tests {
+    use super::*;
+
+    #[test]
+    fn crops_the_view_box() {
+        let svg = r#"<svg id="m" width="900" height="300" viewBox="0 0 900 300" style="max-width: 900px;"><g/></svg>"#;
+        let out = crop_svg(svg, BBox { x: 100.0, y: 50.0, w: 200.0, h: 80.0 });
+        assert!(out.starts_with(r#"<svg id="m" viewBox="100 50 200 80" width="200" height="80"><g/>"#), "{out}");
+    }
 }
 
 #[cfg(test)]

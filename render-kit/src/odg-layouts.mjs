@@ -5,6 +5,9 @@
 //                    ELK keeps their layer/order and still routes every edge
 //   odg-exact        nodes with a position stay exactly there; the rest comes from ELK
 //
+// `%% @odg layer <id> first|last|<n>`: first/last pin a node to the first/last layer; numbers order the
+// layers of nodes and subgraphs (0 before 1 before 2…) through ELK partitioning.
+//
 // Positions arrive from `%% @odg pos <id> <x>,<y>` comments (parsed by bridge.js into
 // layoutHints). Coordinates are node centres in the diagram's SVG user space — the same space as
 // the bounding boxes the bridge reports — so a dragged node lands where it was dropped.
@@ -44,6 +47,7 @@ function buildGraph(data, abs, interactive) {
   const opts = baseOptions(data);
   const root = { id: "__root", layoutOptions: interactive ? { ...opts, ...INTERACTIVE } : opts, children: [], edges: [] };
   const elkNodes = new Map();
+  const partitioned = new Set(); // graphs (root or groups) with numbered layers among their children
   for (const n of data.nodes) {
     // never send `width: undefined`: elkjs crashes on explicit undefined sizes
     const node = { id: n.id, layoutOptions: {} };
@@ -60,11 +64,20 @@ function buildGraph(data, abs, interactive) {
     const layer = layoutHints.layer[n.id];
     if (layer === "first") node.layoutOptions["elk.layered.layering.layerConstraint"] = "FIRST";
     if (layer === "last") node.layoutOptions["elk.layered.layering.layerConstraint"] = "LAST";
+    // numbered layers (0, 1, 2…): ELK partitions keep that order even when arrows point backwards
+    if (/^\d+$/.test(String(layer))) {
+      node.layoutOptions["elk.partitioning.partition"] = String(layer);
+      partitioned.add(n.parentId || root.id);
+    }
     elkNodes.set(n.id, node);
   }
   for (const n of data.nodes) {
     const parent = n.parentId && elkNodes.get(n.parentId);
     (parent ? parent.children : root.children).push(elkNodes.get(n.id));
+  }
+  for (const id of partitioned) {
+    const graph = id === root.id ? root : elkNodes.get(id);
+    if (graph) graph.layoutOptions["elk.partitioning.activate"] = "true";
   }
   if (abs) {
     // ELK wants coordinates relative to the parent

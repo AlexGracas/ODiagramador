@@ -81,7 +81,7 @@ pub fn unclosed_bracket(line: &str) -> Option<char> {
 // Positions live in Mermaid comments so the file stays valid Mermaid everywhere else:
 //   %% @odg layout auto|elk|elk-interactive|exact
 //   %% @odg pos <id> <x>,<y>          node centre, same coordinates as the report's bounding boxes
-//   %% @odg layer <id> first|last
+//   %% @odg layer <id> first|last|<n>     (n = 0, 1, 2…: order of layers, through ELK partitioning)
 
 pub const LAYOUT_MODES: &[&str] = &["auto", "elk", "elk-interactive", "exact"];
 
@@ -194,14 +194,15 @@ pub fn set_node_position(src: &str, id: &str, x: f64, y: f64) -> Result<String, 
     Ok(out)
 }
 
-/// `layer`: Some("first" | "last") or None to remove the constraint.
+/// `layer`: Some("first" | "last" | "<n>") or None to remove the constraint. Numbers order the layers
+/// (0 first): nodes or subgraphs with a lower number always come before higher ones.
 pub fn set_node_layer(src: &str, id: &str, layer: Option<&str>) -> Result<String, String> {
     if !valid_id(id) {
         return Err(format!("invalid node id `{id}`"));
     }
     if let Some(l) = layer {
-        if l != "first" && l != "last" {
-            return Err(format!("layer must be first or last, got `{l}`"));
+        if l != "first" && l != "last" && l.parse::<u32>().is_err() {
+            return Err(format!("layer must be first, last or a number (0, 1, 2…), got `{l}`"));
         }
     }
     let line = layer.map(|l| format!("%% @odg layer {id} {l}"));
@@ -281,6 +282,7 @@ mod tests {
         assert!(set_layout_mode(src, "grid").is_err());
         assert!(set_node_position(src, "bad id", 0.0, 0.0).is_err());
         assert!(set_node_layer(src, "A", Some("middle")).is_err());
+        assert_eq!(layout_directives(&set_node_layer(src, "A", Some("2")).unwrap()).layers[0].layer, "2");
     }
 
     #[test]

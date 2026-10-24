@@ -92,7 +92,7 @@
   // ---------------------------------------------------------------- @odg layout directives
   // %% @odg layout auto|elk|elk-interactive|exact
   // %% @odg pos <id> <x>,<y>        node centre in diagram (SVG user) coordinates
-  // %% @odg layer <id> first|last
+  // %% @odg layer <id> first|last|<n>   (n: layer order, 0 first)
   var LAYOUTS = { elk: "odg-elk", "elk-interactive": "odg-interactive", exact: "odg-exact" };
   var GRAPH_TYPES = /^(flowchart|graph|state|class|er|requirement)/;
 
@@ -201,6 +201,23 @@
       });
       return model;
     }
+    if (typeof db.getBlocksFlat === "function" && typeof db.getEdges === "function") { // block-beta
+      var parentOf = {};
+      (typeof db.getBlocks === "function" ? db.getBlocks() : []).forEach(function walk(b, _i, _a, parent) {
+        if (parent) parentOf[b.id] = parent;
+        (b.children || []).forEach(function (c) { walk(c, 0, null, b.type === "composite" && b.id !== "root" ? b.id : null); });
+      });
+      db.getBlocksFlat().forEach(function (b) {
+        var id = String(b.id);
+        if (id === "root" || b.type === "space") return;
+        var item = { id: id, label: plain(b.label != null ? b.label : b.id), parent: parentOf[id] || null, shape: b.type || null, dom_key: null };
+        if (b.type === "composite") model.groups.push(item); else model.nodes.push(item);
+      });
+      db.getEdges().forEach(function (e) {
+        model.edges.push({ id: String(e.id), from: String(e.start), to: String(e.end), label: plain(e.label) });
+      });
+      return model;
+    }
     if (typeof db.getActors === "function") { // sequence
       var actors = db.getActors();
       var it = actors instanceof Map ? actors.values() : Object.values(actors);
@@ -244,6 +261,29 @@
     });
     var x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
     return round({ x: x0, y: y0, w: Math.max.apply(null, xs) - x0, h: Math.max.apply(null, ys) - y0 });
+  }
+
+  /** Points along a path, in the svg's user coordinates (for crossings / edges through nodes). */
+  function userPoints(path, svg) {
+    if (!path || typeof path.getTotalLength !== "function") return null;
+    var len;
+    try { len = path.getTotalLength(); } catch (e) { return null; }
+    var m = path.getCTM(), root = svg.getCTM();
+    var toUser = m ? (root ? root.inverse().multiply(m) : m) : null;
+    var n = Math.max(2, Math.min(48, Math.ceil(len / 10)));
+    var pts = [];
+    for (var i = 0; i <= n; i++) {
+      var p = path.getPointAtLength((len * i) / n);
+      if (toUser) {
+        var q = svg.createSVGPoint();
+        q.x = p.x;
+        q.y = p.y;
+        p = q.matrixTransform(toUser);
+      }
+      pts.push([Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10]);
+    }
+    var scale = toUser ? Math.sqrt(Math.abs(toUser.a * toUser.d - toUser.b * toUser.c)) || 1 : 1;
+    return { points: pts, length: Math.round(len * scale * 10) / 10 };
   }
 
   function round(b) {
@@ -323,12 +363,46 @@
         model.nodes.push(item);
       });
     }
-    var edgeEls = svg.querySelectorAll('[data-et="edge"]');
+    var edgeEls = svg.querySelectorAll('[data-et="edge"], path.flowchart-link[data-id], path[data-id][marker-end]');
     var edgeById = {};
-    for (var j = 0; j < edgeEls.length; j++) edgeById[edgeEls[j].getAttribute("data-id")] = edgeEls[j];
+    for (var j = 0; j < edgeEls.length; j++) {
+      var did = edgeEls[j].getAttribute("data-id");
+      edgeById[did] = edgeById[did] || edgeEls[j];
+      if (prefix && did.indexOf(prefix) === 0) edgeById[did.slice(prefix.length)] = edgeById[did.slice(prefix.length)] || edgeEls[j];
+    }
+    // edge labels: by data-id when the renderer sets it, otherwise by text (in order)
+    var labelEls = Array.prototype.slice.call(svg.querySelectorAll("g.edgeLabel"));
+    var usedLabels = [];
+    function edgeLabelBox(e) {
+      var want = (e.label || "").trim();
+      if (!want) return null;
+      for (var i = 0; i < labelEls.length; i++) {
+        var le = labelEls[i];
+        if (usedLabels.indexOf(le) >= 0) continue;
+        var tagged = le.querySelector("[data-id]");
+        var tid = tagged && tagged.getAttribute("data-id");
+        var match = tid ? (tid === e.id || tid === prefix + e.id) : plain(le.textContent) === want;
+        if (!match) continue;
+        usedLabels.push(le);
+        var inner = le.querySelector("rect.background, rect, foreignObject, text") || le;
+        var b = userBox(inner, svg, vb);
+        return b && b.w > 0 && b.h > 0 ? b : null;
+      }
+      return null;
+    }
     model.edges.forEach(function (e) {
       var el = edgeById[e.id];
-      if (el) e.bbox = userBox(el, svg, vb);
+      if (el) {
+        e.bbox = userBox(el, svg, vb);
+        var path = el.tagName && el.tagName.toLowerCase() === "path" ? el : el.querySelector("path");
+        var sampled = userPoints(path, svg);
+        if (sampled) {
+          e.points = sampled.points;
+          e.length = sampled.length;
+        }
+      }
+      var lb = edgeLabelBox(e);
+      if (lb) e.label_bbox = lb;
     });
     return vb;
   }
