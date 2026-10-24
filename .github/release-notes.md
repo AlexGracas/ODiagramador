@@ -28,6 +28,16 @@ claude mcp add odiagramador -- /Applications/ODiagramador.app/Contents/MacOS/odg
 
 No Windows o caminho é `...\ODiagramador\odg.exe`. Guia completo: [docs/AGENTS.md](https://github.com/AlexGracas/ODiagramador/blob/main/docs/AGENTS.md).
 
+## Novidades da 0.7.0
+- **Edição pelo mouse mais natural**: clique seleciona, arrastar move (em todos os layouts de grafo), **clique duplo renomeia** e o **botão direito abre um menu de contexto** — renomear/editar texto, forma, **cor** (preenchimento e borda), ligar a outro elemento, excluir e propriedades.
+- **Excluir apaga na hora** (sem "clique de novo"); use Desfazer se precisar.
+- **Modos Editar / Visualizar** com ícones, e **Desfazer / Refazer** (⌘Z / Ctrl+Z, ⇧⌘Z / Ctrl+Y) — tudo na barra superior junto com os botões de criação, separados por contexto.
+- Setas mais fáceis de selecionar (área de clique maior, independente do zoom); clicar fora do painel de edição cancela.
+- **Painéis colapsáveis**: clique duplo na barra entre código e diagrama, ou na barra do painel inferior, recolhe/restaura.
+- Cada aba inferior (Problemas, Comentários para agentes, Atividade) explica para que serve; passar o mouse sobre um marcador numerado mostra o problema.
+- **Comentários para agentes com contexto**: o comentário leva o diagrama aberto e o elemento selecionado (linha e ligações) — você vê e pode editar o contexto antes de enviar. Nova ferramenta MCP **`wait_for_feedback`** (e `odg wait-feedback`) para o agente agir assim que você comentar.
+- MCP/núcleo: nova edição `style` (cores) para fluxogramas e diagramas de classe.
+
 ## Novidades da 0.6.1
 - **`select_element`** (nova ferramenta MCP): o agente seleciona um elemento como se você tivesse clicado nele (contorno, inspetor, linha do código); `get_viewer_status` passa a informá-lo como selecionado.
 - **Windows: atualização** — a conferência final agora compara os arquivos instalados com o pacote (antes ela lia a versão da cópia já carregada e acusava falha numa atualização que tinha funcionado).
