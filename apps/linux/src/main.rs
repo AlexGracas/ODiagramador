@@ -69,6 +69,9 @@ struct State {
     view_zoom: Option<f64>,
     view_center: Option<String>,
     view_visible: Vec<String>,
+    /// The comment context was edited by the human: keep it until sent or regenerated.
+    context_edited: bool,
+    context_setting: bool,
 }
 
 impl State {
@@ -91,6 +94,11 @@ struct Ui {
     notebook: gtk::Notebook,
     feedback_entry: gtk::Entry,
     feedback_button: gtk::Button,
+    context_expander: gtk::Expander,
+    context_view: gtk::TextView,
+    context_include: gtk::CheckButton,
+    context_regen: gtk::Button,
+    context_hint: gtk::Label,
     status: gtk::Label,
     agent_badge: gtk::Label,
     open_button: gtk::Button,
@@ -215,6 +223,8 @@ fn build_ui(app: &adw::Application, args: &[String]) {
         view_zoom: None,
         view_center: None,
         view_visible: vec![],
+        context_edited: false,
+        context_setting: false,
     }));
 
     // ---- header
@@ -283,9 +293,23 @@ fn build_ui(app: &adw::Application, args: &[String]) {
     let fb_row = gtk::Box::builder().spacing(6).margin_start(6).margin_end(6).margin_bottom(6).margin_top(6).build();
     fb_row.append(&feedback_entry);
     fb_row.append(&feedback_button);
+    // context sent with the comment (diagram, selected element, its lines), editable
+    let context_view = gtk::TextView::builder().monospace(true).wrap_mode(gtk::WrapMode::WordChar).top_margin(4).left_margin(4).build();
+    let context_include = gtk::CheckButton::builder().active(true).build();
+    let context_regen = gtk::Button::builder().css_classes(["flat"]).build();
+    let context_hint = gtk::Label::builder().css_classes(["dim-label", "caption"]).ellipsize(gtk::pango::EllipsizeMode::End).xalign(0.0).hexpand(true).build();
+    let context_tools = gtk::Box::builder().spacing(8).build();
+    context_tools.append(&context_include);
+    context_tools.append(&context_regen);
+    context_tools.append(&context_hint);
+    let context_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    context_box.append(&gtk::ScrolledWindow::builder().child(&context_view).min_content_height(72).build());
+    context_box.append(&context_tools);
+    let context_expander = gtk::Expander::builder().expanded(true).child(&context_box).margin_start(6).margin_end(6).margin_bottom(6).build();
     let fb_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
     fb_box.append(&gtk::ScrolledWindow::builder().child(&feedback).vexpand(true).build());
     fb_box.append(&fb_row);
+    fb_box.append(&context_expander);
     notebook.append_page(&gtk::ScrolledWindow::builder().child(&problems).build(), Some(&gtk::Label::new(None)));
     notebook.append_page(&fb_box, Some(&gtk::Label::new(None)));
     notebook.append_page(&gtk::ScrolledWindow::builder().child(&activity).build(), Some(&gtk::Label::new(None)));
@@ -317,6 +341,11 @@ fn build_ui(app: &adw::Application, args: &[String]) {
         notebook,
         feedback_entry,
         feedback_button,
+        context_expander,
+        context_view,
+        context_include,
+        context_regen,
+        context_hint,
         status,
         agent_badge,
         open_button,
@@ -401,6 +430,10 @@ fn apply_strings(ui: &Ui) {
     ui.mcp_button.set_tooltip_text(Some(&s.t("ui-mcp-configure")));
     ui.settings_button.set_tooltip_text(Some(&s.t("ui-settings")));
     ui.feedback_button.set_label(&s.t("ui-add-feedback"));
+    ui.context_expander.set_label(Some(&s.t("ui-feedback-context")));
+    ui.context_include.set_label(Some(&s.t("ui-feedback-context-include")));
+    ui.context_regen.set_label(&s.t("ui-feedback-context-reset"));
+    ui.context_hint.set_label(&s.t("ui-feedback-context-hint"));
     ui.feedback_entry.set_placeholder_text(Some(&s.t("ui-feedback-placeholder")));
     ui.agent_badge.set_label(&format!("✦ {}", s.t("ui-changed-by-agent")));
     for (i, key) in ["ui-problems", "ui-feedback", "ui-activity"].iter().enumerate() {
@@ -497,14 +530,29 @@ fn wire(ui: &Ui, ucm: &webkit::UserContentManager) {
         if let (Some(ws), Some(path)) = (&s.ws, &s.selected) {
             if !text.trim().is_empty() {
                 let author = glib::real_name().to_string_lossy().to_string();
-                let _ = ws.add_feedback(path, &text, s.selected_element.as_deref(), None, &author);
+                let buf = u.context_view.buffer();
+                let context = buf.text(&buf.start_iter(), &buf.end_iter(), false).to_string();
+                let context = (u.context_include.is_active() && !context.trim().is_empty()).then_some(context);
+                let _ = ws.add_feedback(path, &text, s.selected_element.as_deref(), None, &author, context.as_deref());
             }
         }
         drop(s);
         u.feedback_entry.set_text("");
+        refresh_feedback_context(&u, true);
         refresh_side(&u);
     };
     let add2 = add.clone();
+    let u = ui.clone();
+    ui.context_view.buffer().connect_changed(move |_| {
+        let mut s = u.state.borrow_mut();
+        if !s.context_setting {
+            s.context_edited = true;
+        }
+    });
+    let u = ui.clone();
+    ui.context_regen.connect_clicked(move |_| refresh_feedback_context(&u, true));
+    let u = ui.clone();
+    ui.context_include.connect_toggled(move |b| u.context_view.set_sensitive(b.is_active()));
     ui.feedback_button.connect_clicked(move |_| add());
     ui.feedback_entry.connect_activate(move |_| add2());
 
@@ -593,6 +641,7 @@ fn on_viewer_message(ui: &Ui, msg: Value) {
         "select" => {
             let el = msg["element_id"].as_str().map(str::to_string);
             ui.state.borrow_mut().selected_element = el.clone();
+            refresh_feedback_context(ui, false);
             if let Some(el) = el {
                 let line = source::find_line(&buffer_text(ui), &el);
                 if let Some(l) = line {
@@ -966,7 +1015,11 @@ fn fill_feedback(ui: &Ui, items: &[Feedback], lang: Lang) {
             f.element_id.as_ref().map(|e| format!(" · {e}")).unwrap_or_default(),
             f.resolution.as_ref().map(|r| format!(" · {}: {r}", i18n::t(lang, "ui-resolved", &[]))).unwrap_or_default()
         );
-        let row = adw::ActionRow::builder().title(glib::markup_escape_text(&f.text).as_str()).subtitle(glib::markup_escape_text(&sub).as_str()).build();
+        let sub = match &f.context {
+            Some(c) => format!("{sub}\n{c}"),
+            None => sub,
+        };
+        let row = adw::ActionRow::builder().title(glib::markup_escape_text(&f.text).as_str()).subtitle(glib::markup_escape_text(&sub).as_str()).subtitle_lines(5).build();
         row.add_prefix(&gtk::Image::from_icon_name(if f.resolved { "emblem-ok-symbolic" } else { "mail-unread-symbolic" }));
         if !f.resolved {
             let btn = gtk::Button::builder().label(i18n::t(lang, "ui-mark-resolved", &[])).valign(gtk::Align::Center).build();
@@ -1019,8 +1072,31 @@ fn select(ui: &Ui, path: Option<String>) {
     ui.agent_badge.set_visible(false);
     ui.window.set_title(Some(&format!("{path} — ODiagramador")));
     set_buffer(ui, &text);
+    refresh_feedback_context(ui, false);
     refresh_side(ui);
     render(ui);
+}
+
+/// Regenerates the comment context (diagram, selected element, its lines) unless the human edited it.
+fn refresh_feedback_context(ui: &Ui, force: bool) {
+    let text = {
+        let s = ui.state.borrow();
+        if !force && s.context_edited {
+            return;
+        }
+        match (&s.ws, &s.selected) {
+            (Some(ws), Some(path)) => ws
+                .read(path)
+                .map(|src| odg_core::feedback_context::build(&src, path, s.selected_element.as_deref(), s.lang))
+                .unwrap_or_default(),
+            _ => String::new(),
+        }
+    };
+    ui.state.borrow_mut().context_setting = true;
+    ui.context_view.buffer().set_text(&text);
+    let mut s = ui.state.borrow_mut();
+    s.context_setting = false;
+    s.context_edited = false;
 }
 
 fn flush_save(ui: &Ui) {

@@ -108,6 +108,10 @@ public partial class MainWindow : Window
         FeedbackTab.Header = T("ui-feedback");
         ActivityTab.Header = T("ui-activity");
         AddFeedbackButton.Content = T("ui-add-feedback");
+        ContextExpander.Header = T("ui-feedback-context");
+        IncludeContextBox.Content = T("ui-feedback-context-include");
+        RegenerateContextButton.Content = T("ui-feedback-context-reset");
+        ContextHint.Text = T("ui-feedback-context-hint");
         AgentBadge.Text = "✦ " + T("ui-changed-by-agent");
         EmptyText.Text = _workspace is null ? T("ui-no-workspace") : DiagramList.Items.Count == 0 ? T("ui-no-diagrams") : "";
         var all = new JsonObject();
@@ -477,6 +481,7 @@ public partial class MainWindow : Window
             case "select":
                 _selectedElement = msg["element_id"]?.GetValue<string>();
                 App.Log($"selected element: {_selectedElement ?? "(none)"} in {_selected}");
+                RefreshFeedbackContext(force: false);
                 ElementTag.Text = _selectedElement ?? "";
                 if (_selectedElement is not null &&
                     Core.CallOrDefault<int?>("find_line", new { source = Editor.Text, id = _selectedElement }) is int line)
@@ -774,6 +779,7 @@ public partial class MainWindow : Window
         AgentBadge.Visibility = Visibility.Collapsed;
         _savedSource = Core.CallOrDefault<string>("read", new { workspace = _workspace, path }) ?? "";
         SetText(_savedSource);
+        RefreshFeedbackContext(force: false);
         RefreshSide();
         Render();
     }
@@ -878,14 +884,40 @@ public partial class MainWindow : Window
     private void OnAddFeedback(object sender, RoutedEventArgs e)
     {
         if (_workspace is null || _selected is null || string.IsNullOrWhiteSpace(FeedbackBox.Text)) return;
+        var context = IncludeContextBox.IsChecked == true && !string.IsNullOrWhiteSpace(ContextBox.Text) ? ContextBox.Text : null;
         Core.Call<Feedback>("add_feedback", new
         {
             workspace = _workspace, path = _selected, text = FeedbackBox.Text,
-            element_id = _selectedElement, author = Environment.UserName,
+            element_id = _selectedElement, author = Environment.UserName, context,
         });
+        App.Log($"comment for agents on {_selected}{(_selectedElement is null ? "" : $" ({_selectedElement})")}{(context is null ? " without context" : "")}");
         FeedbackBox.Text = "";
+        RefreshFeedbackContext(force: true);
         RefreshList();
     }
+
+    // ---- context sent with a comment: regenerated on diagram / selection changes unless the human edited it
+    private bool _contextEdited, _settingContext;
+
+    private void RefreshFeedbackContext(bool force)
+    {
+        if (!force && _contextEdited) return;
+        _settingContext = true;
+        ContextBox.Text = _workspace is null || _selected is null
+            ? ""
+            : Core.CallOrDefault<string>("feedback_context", new { workspace = _workspace, path = _selected, element_id = _selectedElement, lang = _lang }) ?? "";
+        _settingContext = false;
+        _contextEdited = false;
+    }
+
+    private void OnContextEdited(object sender, TextChangedEventArgs e)
+    {
+        if (!_settingContext) _contextEdited = true;
+    }
+
+    private void OnIncludeContext(object sender, RoutedEventArgs e) => ContextBox.IsEnabled = IncludeContextBox.IsChecked == true;
+
+    private void OnRegenerateContext(object sender, RoutedEventArgs e) => RefreshFeedbackContext(force: true);
 
     private void OnFeedbackKey(object sender, KeyEventArgs e)
     {

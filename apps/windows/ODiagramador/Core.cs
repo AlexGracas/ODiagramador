@@ -115,7 +115,7 @@ public record DiagramInfo(string Path, string Name, string Engine, long Size, st
     public string Badge => OpenFeedback > 0 ? $"💬 {OpenFeedback}" : "";
 }
 
-public record Feedback(string Id, string Path, string? ElementId, int? Line, string Text, string Author, string CreatedAt,
+public record Feedback(string Id, string Path, string? ElementId, int? Line, string Text, string? Context, string Author, string CreatedAt,
     bool Resolved, string? Resolution)
 {
     public string Glyph => Resolved ? "✔" : "💬";

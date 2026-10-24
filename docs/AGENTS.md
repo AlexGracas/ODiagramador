@@ -64,7 +64,8 @@ copy ready-made configs for each client. Traffic is plain HTTP: outside a truste
 | `arrange_diagram(path, mode?, positions?, layers?, reset_positions?)` | Fix the layout of graph diagrams: `elk`, `elk-interactive` (positions as hints) or `exact` (exact positions); `layers` pins first/last or fixes the order of layers with numbers (0, 1, 2…, nodes or subgraphs). Stored as `%% @odg` comments — see `get_syntax_help("layout")`. |
 | `inspect_diagram(path\|source)` | Text description of the layout (nodes with positions, edges, groups) — for models without vision. |
 | `list_diagrams()` / `get_diagram(path)` | Status of every diagram / numbered source + last report + open comments. |
-| `get_feedback(path?)` / `resolve_feedback(id, resolution)` | Read and close the human's comments. |
+| `get_feedback(path?)` / `resolve_feedback(id, resolution)` | Read and close the human's comments. Each comment carries the context the human saw and could edit (diagram, selected element, its source lines). |
+| `wait_for_feedback(path?, wait_seconds?, only_new?)` | Watch the human's comments: returns open ones at once, otherwise wakes up the moment they write one. Act, `resolve_feedback`, call again. |
 | `get_activity(path?)` | Who changed what recently. |
 | `show_diagram(path, element_ids?, message?, level?)` | Open a diagram in the human's desktop viewer (launching the app if needed), optionally highlighting elements with a note. `open_in_viewer` is the old name. |
 | `open_diagram(path, message?)` | Change the diagram open in the human's viewer. |
@@ -109,6 +110,12 @@ notify_user("Done: 3 diagrams updated", level="success")
 Messages live in `.odiagramador/messages.jsonl` (the conversation, also shown in the app's Activity tab) and the
 viewer's presence in `.odiagramador/viewer.json`, so this works with any number of agents and needs no network.
 The human can also leave comments on elements for you: `get_feedback`.
+
+**Acting as soon as the human comments.** Agents only act when they are running, so keep one watching:
+- with MCP only: loop `wait_for_feedback` → act → `resolve_feedback` → `wait_for_feedback`;
+- in Claude Code (or any agent that runs shell commands in the background and is woken when they end):
+  run `odg wait-feedback --workspace <dir> --only-new` in the background; it exits, printing the comment and its
+  context, the moment the human clicks "Adicionar comentário", which wakes the agent. Re-launch it after acting.
 
 Layout is separate from content: if the diagram is correct but hard to read, use
 `arrange_diagram` (switch to `elk`, pin nodes with `positions`, or `layers: first/last`)

@@ -250,6 +250,11 @@ struct SeverityIcon: View {
 struct FeedbackList: View {
     @EnvironmentObject var state: AppState
     @State private var draft = ""
+    /// Context sent with the comment: regenerated when the diagram / selection changes, unless edited.
+    @State private var context = ""
+    @State private var contextEdited = false
+    @State private var includeContext = true
+    @State private var showContext = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -266,6 +271,9 @@ struct FeedbackList: View {
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        if let c = f.context {
+                            Text(c).font(.caption2.monospaced()).foregroundStyle(.tertiary).lineLimit(4).textSelection(.enabled)
+                        }
                     }
                     Spacer()
                     if !f.resolved {
@@ -282,13 +290,46 @@ struct FeedbackList: View {
                     .onSubmit(submit)
                 Button(state.t("ui-add-feedback"), action: submit).disabled(draft.isEmpty || state.selectedPath == nil)
             }
-            .padding(6)
+            .padding(.horizontal, 6)
+            .padding(.top, 6)
+            DisclosureGroup(isExpanded: $showContext) {
+                VStack(alignment: .leading, spacing: 4) {
+                    TextEditor(text: Binding(get: { context }, set: { context = $0; contextEdited = true }))
+                        .font(.caption.monospaced())
+                        .frame(height: 78)
+                        .scrollContentBackground(.hidden)
+                        .padding(4)
+                        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+                        .disabled(!includeContext)
+                        .opacity(includeContext ? 1 : 0.5)
+                    HStack {
+                        Toggle(state.t("ui-feedback-context-include"), isOn: $includeContext).toggleStyle(.checkbox)
+                        Button(state.t("ui-feedback-context-reset")) { regenerate(force: true) }.controlSize(.small)
+                        Spacer()
+                        Text(state.t("ui-feedback-context-hint")).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+            } label: {
+                Text(state.t("ui-feedback-context")).font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.bottom, 6)
         }
+        .onAppear { regenerate(force: true) }
+        .onChange(of: state.selectedPath) { _ in regenerate(force: false) }
+        .onChange(of: state.selectedElement) { _ in regenerate(force: false) }
+    }
+
+    private func regenerate(force: Bool) {
+        guard force || !contextEdited else { return }
+        context = state.feedbackContext()
+        contextEdited = false
     }
 
     private func submit() {
-        state.addFeedback(draft)
+        state.addFeedback(draft, context: includeContext ? context : nil)
         draft = ""
+        regenerate(force: true)
     }
 }
 

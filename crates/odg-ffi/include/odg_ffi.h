@@ -33,7 +33,8 @@
  *   report           {workspace, path}                  -> Report | null
  *   events           {workspace, limit?, path?}         -> Event[] (newest first)
  *   feedback         {workspace, path?, include_resolved?} -> Feedback[]
- *   add_feedback     {workspace, path, text, element_id?, line?, author?} -> Feedback
+ *   add_feedback     {workspace, path, text, element_id?, line?, author?, context?} -> Feedback
+ *   feedback_context {workspace, path, element_id?, lang?} -> string  (diagram, selected element, its lines)
  *   resolve_feedback {workspace, id, resolution?, actor?} -> Feedback
  *   viewer_inbox     {workspace, cursor?}               -> {cursor, messages[]}  agent messages for the viewer:
  *                    kind show | highlight | view | notify | ask (no cursor = recent + unanswered questions)

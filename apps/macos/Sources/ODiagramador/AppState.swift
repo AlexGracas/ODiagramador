@@ -209,9 +209,12 @@ final class AppState: ObservableObject {
         guard let ws = workspace,
               let list = try? Core.call("list", ["workspace": ws.path], as: [DiagramInfo].self) else { return }
         let changed = list.filter { lastModified[$0.path] != $0.modified }
+        // a comment added or resolved (by an agent, say) changes the counts: refresh the comment list too
+        let feedbackChanged = list.map(\.openFeedback) != diagrams.map(\.openFeedback)
         if list.map(\.path) != diagrams.map(\.path) || !changed.isEmpty || list != diagrams {
             diagrams = list
         }
+        if feedbackChanged { refreshSideData() }
         for d in changed { lastModified[d.path] = d.modified }
         if let sel = selectedPath, changed.contains(where: { $0.path == sel }) {
             reloadFromDisk(sel)
@@ -472,10 +475,19 @@ final class AppState: ObservableObject {
 
     // MARK: feedback
 
-    func addFeedback(_ text: String) {
+    /// What a comment written now would tell the agent: open diagram, selected element, its lines.
+    func feedbackContext() -> String {
+        guard let ws = workspace, let path = selectedPath else { return "" }
+        var args: [String: Any] = ["workspace": ws.path, "path": path, "lang": lang]
+        if let el = selectedElement { args["element_id"] = el }
+        return (try? Core.call("feedback_context", args, as: String.self)) ?? ""
+    }
+
+    func addFeedback(_ text: String, context: String? = nil) {
         guard let ws = workspace, let path = selectedPath, !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         var args: [String: Any] = ["workspace": ws.path, "path": path, "text": text, "author": NSFullUserName()]
         if let el = selectedElement { args["element_id"] = el }
+        if let context, !context.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { args["context"] = context }
         do {
             _ = try Core.call("add_feedback", args, as: Feedback.self)
             refreshList()

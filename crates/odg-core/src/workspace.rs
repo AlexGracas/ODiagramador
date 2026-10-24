@@ -113,6 +113,10 @@ pub struct Feedback {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line: Option<u32>,
     pub text: String,
+    /// What was on screen when the human wrote it (diagram, selected element, its source lines),
+    /// shown to them before sending and editable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
     pub author: String,
     pub created_at: String,
     #[serde(default)]
@@ -415,7 +419,7 @@ impl Workspace {
             .collect())
     }
 
-    pub fn add_feedback(&self, path: &str, text: &str, element_id: Option<&str>, line: Option<u32>, author: &str) -> WsResult<Feedback> {
+    pub fn add_feedback(&self, path: &str, text: &str, element_id: Option<&str>, line: Option<u32>, author: &str, context: Option<&str>) -> WsResult<Feedback> {
         let rel = self.rel(path)?;
         let mut items = self.load_feedback()?;
         let created_at = now_rfc3339();
@@ -426,6 +430,7 @@ impl Workspace {
             element_id: element_id.map(str::to_string),
             line,
             text: text.to_string(),
+            context: context.map(str::trim).filter(|c| !c.is_empty()).map(str::to_string),
             author: author.to_string(),
             created_at,
             resolved: false,
@@ -502,7 +507,7 @@ mod tests {
         assert_eq!(ev[1].action, "create");
         assert_eq!(ev[1].client.as_deref(), Some("test"));
 
-        let fb = ws.add_feedback(&rel, "make B red", Some("B"), None, "human").unwrap();
+        let fb = ws.add_feedback(&rel, "make B red", Some("B"), None, "human", None).unwrap();
         assert_eq!(ws.feedback(Some(&rel), false).unwrap().len(), 1);
         assert_eq!(ws.list().unwrap()[0].open_feedback, 1);
         ws.resolve_feedback(&fb.id, Some("done"), Actor::Agent).unwrap();

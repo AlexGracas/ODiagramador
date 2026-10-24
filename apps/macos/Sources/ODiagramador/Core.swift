@@ -134,6 +134,7 @@ struct Feedback: Codable, Hashable, Identifiable {
     var elementId: String?
     var line: Int?
     var text: String
+    var context: String?
     var author: String
     var createdAt: String
     var resolved: Bool

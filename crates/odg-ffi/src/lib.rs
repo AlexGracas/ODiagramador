@@ -157,9 +157,16 @@ pub fn invoke(method: &str, a: &Value) -> R {
         "add_feedback" => {
             let line = a.get("line").and_then(Value::as_u64).map(|l| l as u32);
             let fb = ws(a)?
-                .add_feedback(arg(a, "path")?, arg(a, "text")?, opt(a, "element_id"), line, opt(a, "author").unwrap_or("human"))
+                .add_feedback(arg(a, "path")?, arg(a, "text")?, opt(a, "element_id"), line, opt(a, "author").unwrap_or("human"), opt(a, "context"))
                 .map_err(|e| e.to_string())?;
             to_value(fb)
+        }
+        // the context a comment will carry (shown and editable before sending)
+        "feedback_context" => {
+            let w = ws(a)?;
+            let path = arg(a, "path")?;
+            let src = w.read(path).map_err(|e| e.to_string())?;
+            Ok(json!(odg_core::feedback_context::build(&src, &w.rel(path).map_err(|e| e.to_string())?, opt(a, "element_id"), lang(a))))
         }
         "resolve_feedback" => to_value(ws(a)?.resolve_feedback(arg(a, "id")?, opt(a, "resolution"), actor(a)).map_err(|e| e.to_string())?),
         // agent ⇄ human channel (see odg_core::channel)

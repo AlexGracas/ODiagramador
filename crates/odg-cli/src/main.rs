@@ -69,6 +69,24 @@ enum Cmd {
         #[arg(long, default_value_t = 2.0)]
         scale: f64,
     },
+    /// Wait until the human writes a comment for agents in the desktop viewer, print it (with its context)
+    /// and exit 0; exit 2 after --timeout seconds. Agents: run it in the background and act when it ends.
+    WaitFeedback {
+        #[arg(long)]
+        workspace: Option<PathBuf>,
+        /// Seconds to wait (0 = no limit)
+        #[arg(long, default_value_t = 0)]
+        timeout: u64,
+        /// Ignore comments that already exist
+        #[arg(long)]
+        only_new: bool,
+        /// Only comments on this diagram
+        #[arg(long)]
+        path: Option<String>,
+        /// Print the comments as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Watch the workspace and re-validate diagrams when they change
     Watch {
         #[arg(long, short)]
@@ -98,6 +116,33 @@ fn lang_for(cli: Option<&str>, ws: Option<&Workspace>) -> Lang {
         return Lang::parse(&l);
     }
     Lang::from_env()
+}
+
+fn wait_feedback(ws: &Workspace, timeout: u64, only_new: bool, path: Option<&str>, json: bool) -> Result<ExitCode, String> {
+    let err = |e: odg_core::workspace::WsError| e.to_string();
+    let known: std::collections::HashSet<String> =
+        if only_new { ws.feedback(path, true).map_err(err)?.into_iter().map(|f| f.id).collect() } else { Default::default() };
+    let start = std::time::Instant::now();
+    loop {
+        let open: Vec<_> = ws.feedback(path, false).map_err(err)?.into_iter().filter(|f| !known.contains(&f.id)).collect();
+        if !open.is_empty() {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&open).unwrap_or_default());
+            } else {
+                println!("The human wrote {} comment(s) for you in ODiagramador:", open.len());
+                for f in &open {
+                    print!("{}", mcp::format_feedback(f));
+                }
+                println!("\nAct on each one, then resolve it (MCP resolve_feedback) with a short note of what you changed.");
+            }
+            return Ok(ExitCode::SUCCESS);
+        }
+        if timeout > 0 && start.elapsed().as_secs() >= timeout {
+            eprintln!("no comment in {timeout}s");
+            return Ok(ExitCode::from(2));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
 }
 
 fn open_ws(dir: Option<PathBuf>) -> Result<Workspace, String> {
@@ -135,6 +180,7 @@ fn main() -> ExitCode {
             let lang = lang_for(lang_arg.as_deref(), None);
             odg_render::run(move |r| render(&r, file, out, svg, annotated, theme, scale, lang)).and_then(|x| x)
         }
+        Cmd::WaitFeedback { workspace, timeout, only_new, path, json } => open_ws(workspace).and_then(|ws| wait_feedback(&ws, timeout, only_new, path.as_deref(), json)),
         Cmd::Watch { workspace } => open_ws(workspace).and_then(|ws| {
             let lang = lang_for(lang_arg.as_deref(), Some(&ws));
             odg_render::run(move |r| watch(&ws, &r, lang))?

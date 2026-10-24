@@ -412,17 +412,35 @@ impl Server {
                 let items = self.ws.feedback(s("path"), b("include_resolved", false))?;
                 let mut t = if items.is_empty() { "No open comments.".to_string() } else { format!("{} comment(s):\n", items.len()) };
                 for f in &items {
-                    t.push_str(&format!(
-                        "- [{}] {} {}{}{}: {}\n",
-                        f.id,
-                        if f.resolved { "✔" } else { "•" },
-                        f.path,
-                        f.element_id.as_ref().map(|e| format!(" (element {e})")).unwrap_or_default(),
-                        f.line.map(|l| format!(" (line {l})")).unwrap_or_default(),
-                        f.text
-                    ));
+                    t.push_str(&format_feedback(f));
                 }
                 Ok(json!({"content": [{"type": "text", "text": t}], "structuredContent": {"feedback": items}}))
+            }
+            "wait_for_feedback" => {
+                // open comments first (pending work), else block until the human writes one
+                let wait = args.get("wait_seconds").and_then(Value::as_u64).unwrap_or(300).min(3600);
+                let path = s("path").map(str::to_string);
+                let known: std::collections::HashSet<String> = if b("only_new", false) {
+                    self.ws.feedback(path.as_deref(), true)?.into_iter().map(|f| f.id).collect()
+                } else {
+                    Default::default()
+                };
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait);
+                loop {
+                    let open: Vec<_> = self.ws.feedback(path.as_deref(), false)?.into_iter().filter(|f| !known.contains(&f.id)).collect();
+                    if !open.is_empty() {
+                        let mut t = format!("The human wrote {} comment(s) for you:\n", open.len());
+                        for f in &open {
+                            t.push_str(&format_feedback(f));
+                        }
+                        t.push_str("\nAct on each one (the context says what they were looking at), then call resolve_feedback(id, resolution) with a short note of what you changed — they see it in the app. Call wait_for_feedback again to keep watching.\n");
+                        return Ok(json!({"content": [{"type": "text", "text": t}], "structuredContent": {"feedback": open}}));
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        return Ok(json!({"content": [{"type": "text", "text": format!("No new comment in {wait}s. Call wait_for_feedback again to keep watching.")}], "structuredContent": {"feedback": []}}));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                }
             }
             "resolve_feedback" => {
                 let id = s("id").ok_or(ToolError("`id` is required".into()))?;
@@ -892,6 +910,26 @@ fn mentions_id(src: &str, id: &str) -> bool {
     })
 }
 
+/// One comment for the agent: id, diagram, element, text, and the context the human sent with it.
+pub(crate) fn format_feedback(f: &odg_core::workspace::Feedback) -> String {
+    let mut t = format!(
+        "- [{}] {} {}{}{}: {}\n",
+        f.id,
+        if f.resolved { "✔" } else { "•" },
+        f.path,
+        f.element_id.as_ref().map(|e| format!(" (element {e})")).unwrap_or_default(),
+        f.line.map(|l| format!(" (line {l})")).unwrap_or_default(),
+        f.text
+    );
+    if let Some(c) = &f.context {
+        t.push_str(&format!("  context:\n{}\n", c.lines().map(|l| format!("    {l}")).collect::<Vec<_>>().join("\n")));
+    }
+    if let Some(r) = &f.resolution {
+        t.push_str(&format!("  resolution: {r}\n"));
+    }
+    t
+}
+
 /// A list of strings argument (also accepts a single string).
 fn strings(args: &Value, key: &str) -> Vec<String> {
     match args.get(key) {
@@ -1065,6 +1103,13 @@ fn tool_definitions() -> Value {
         {"name": "get_feedback", "title": "Read human comments",
          "description": "Comments the human left on diagrams in the desktop viewer (what they want changed).",
          "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "include_resolved": {"type": "boolean"}}}, "annotations": ro},
+        {"name": "wait_for_feedback", "title": "Wait for the human's comments",
+         "description": "Watch the desktop viewer's \"comments for agents\": returns the open comments right away, otherwise waits (up to wait_seconds, default 300) and returns the moment the human writes one — with the context they sent (diagram, selected element, its source lines). Act on it, resolve_feedback, then call this again to keep watching. only_new=true ignores comments that already exist. (Shell-capable agents can run `odg wait-feedback` in the background instead.)",
+         "inputSchema": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Only comments on this diagram"},
+            "wait_seconds": {"type": "integer", "minimum": 0, "maximum": 3600},
+            "only_new": {"type": "boolean"}}},
+         "annotations": ro},
         {"name": "resolve_feedback", "title": "Resolve comment",
          "description": "Mark a human comment as addressed, with a short note of what you changed.",
          "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "resolution": {"type": "string"}}, "required": ["id"]},

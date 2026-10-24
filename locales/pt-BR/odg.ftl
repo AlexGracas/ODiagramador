@@ -302,3 +302,7 @@ ui-agent-close = Fechar
 ui-agent-reply-placeholder = Escreva sua resposta…
 ui-agent-send = Enviar
 ui-agent-sent = Resposta enviada
+ui-feedback-context = Contexto enviado ao agente
+ui-feedback-context-include = Enviar contexto
+ui-feedback-context-reset = Regenerar
+ui-feedback-context-hint = Gerado do diagrama aberto e do elemento selecionado; você pode editar antes de enviar.
