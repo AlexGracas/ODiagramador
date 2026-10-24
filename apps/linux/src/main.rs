@@ -90,6 +90,7 @@ struct Ui {
     sort_dd: gtk::DropDown,
     /// set while the list options are being (re)filled, so their change handlers stay quiet
     list_opts_busy: Rc<Cell<bool>>,
+    collapse_list: gtk::Button,
     buffer: sourceview::Buffer,
     editor: sourceview::View,
     web: webkit::WebView,
@@ -101,8 +102,9 @@ struct Ui {
     feedback_button: gtk::Button,
     tab_help: Vec<gtk::Label>,
     /// strips left by the collapsed code / bottom panel (button, name label)
-    code_rail: (gtk::Button, gtk::Label),
-    bottom_rail: (gtk::Button, gtk::Label),
+    code_rail: Collapsible,
+    bottom_rail: Collapsible,
+    list_rail: Collapsible,
     context_expander: gtk::Expander,
     context_view: gtk::TextView,
     context_include: gtk::CheckButton,
@@ -148,8 +150,16 @@ const RAIL: i32 = 26;
 
 /// Double-click the bar to collapse / restore one child of `paned` (the start one, or the end one). A
 /// collapsed child leaves a labelled strip (its name and an arrow) that brings it back when clicked, so it
-/// is clear what is hidden. Returns the strip and its label, filled with the localised name later.
-fn make_collapsible(paned: &gtk::Paned, end: bool) -> (gtk::Button, gtk::Label) {
+/// is clear what is hidden. Returns the strip, its label (filled with the localised name later) and a
+/// function that collapses (true) or restores (false) the child.
+#[derive(Clone)]
+struct Collapsible {
+    rail: gtk::Button,
+    label: gtk::Label,
+    set: Rc<dyn Fn(bool)>,
+}
+
+fn make_collapsible(paned: &gtk::Paned, end: bool) -> Collapsible {
     paned.set_wide_handle(true);
     paned.add_css_class("odg-split");
     paned.set_shrink_start_child(true);
@@ -200,6 +210,7 @@ fn make_collapsible(paned: &gtk::Paned, end: bool) -> (gtk::Button, gtk::Label) 
     };
     let f = set_collapsed.clone();
     rail.connect_clicked(move |_| f(false));
+    let set = set_collapsed.clone();
     let click = gtk::GestureClick::builder().button(1).propagation_phase(gtk::PropagationPhase::Capture).build();
     let (p, r) = (paned.clone(), rail.clone());
     click.connect_pressed(move |g, n, x, y| {
@@ -211,7 +222,7 @@ fn make_collapsible(paned: &gtk::Paned, end: bool) -> (gtk::Button, gtk::Label) 
         set_collapsed(!r.is_visible());
     });
     paned.add_controller(click);
-    (rail, label)
+    Collapsible { rail, label, set }
 }
 
 /// A later launch (an agent's odiagramador:// link, or the user starting the app again) reuses this window.
@@ -333,9 +344,14 @@ fn build_ui(app: &adw::Application, args: &[String]) {
     // how the list is organised: group (none / type / folder) and sort (name / newest first)
     let group_dd = gtk::DropDown::builder().hexpand(true).css_classes(["caption"]).build();
     let sort_dd = gtk::DropDown::builder().hexpand(true).css_classes(["caption"]).build();
-    let list_opts = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(4).homogeneous(true).margin_start(6).margin_end(6).margin_top(6).margin_bottom(2).build();
-    list_opts.append(&group_dd);
-    list_opts.append(&sort_dd);
+    let pickers = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(4).homogeneous(true).hexpand(true).build();
+    pickers.append(&group_dd);
+    pickers.append(&sort_dd);
+    // hides the list: it leaves a "DIAGRAMS" strip that brings it back
+    let collapse_list = gtk::Button::builder().icon_name("go-first-symbolic").css_classes(["flat"]).build();
+    let list_opts = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(4).margin_start(6).margin_end(6).margin_top(6).margin_bottom(2).build();
+    list_opts.append(&pickers);
+    list_opts.append(&collapse_list);
     let sidebar = gtk::Box::builder().orientation(gtk::Orientation::Vertical).width_request(220).build();
     sidebar.append(&list_opts);
     sidebar.append(&list_scroll);
@@ -432,6 +448,9 @@ fn build_ui(app: &adw::Application, args: &[String]) {
     // double-click a bar to collapse / restore the code (start of hpaned) or the bottom panel (end of vpaned)
     let code_rail = make_collapsible(&hpaned, false);
     let bottom_rail = make_collapsible(&vpaned, true);
+    let list_rail = make_collapsible(&main_paned, false);
+    let f = list_rail.set.clone();
+    collapse_list.connect_clicked(move |_| f(true));
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.append(&header);
@@ -447,6 +466,7 @@ fn build_ui(app: &adw::Application, args: &[String]) {
         group_dd,
         sort_dd,
         list_opts_busy: Rc::new(Cell::new(false)),
+        collapse_list,
         buffer,
         editor,
         web,
@@ -459,6 +479,7 @@ fn build_ui(app: &adw::Application, args: &[String]) {
         tab_help,
         code_rail,
         bottom_rail,
+        list_rail,
         context_expander,
         context_view,
         context_include,
@@ -589,11 +610,15 @@ fn apply_strings(ui: &Ui) {
     let (group, sort) = (s.prefs.list_group.clone(), s.prefs.list_sort.clone());
     ui.group_dd.set_tooltip_text(Some(&s.t("ui-group-by")));
     // the vertical strip stacks the letters of the code pane's name
-    let code = s.t("ui-source").to_uppercase();
-    ui.code_rail.1.set_label(&code.chars().map(String::from).collect::<Vec<_>>().join("\n"));
-    ui.code_rail.0.set_tooltip_text(Some(&s.t("ui-split-code-show")));
-    ui.bottom_rail.1.set_label(&s.t("ui-bottom-panel").to_uppercase());
-    ui.bottom_rail.0.set_tooltip_text(Some(&s.t("ui-split-bottom-show")));
+    let code = s.t("ui-source");
+    let stacked = |text: String| text.to_uppercase().chars().map(String::from).collect::<Vec<_>>().join("\n");
+    ui.code_rail.label.set_label(&stacked(code));
+    ui.code_rail.rail.set_tooltip_text(Some(&s.t("ui-split-code-show")));
+    ui.bottom_rail.label.set_label(&s.t("ui-bottom-panel").to_uppercase());
+    ui.bottom_rail.rail.set_tooltip_text(Some(&s.t("ui-split-bottom-show")));
+    ui.list_rail.label.set_label(&stacked(s.t("ui-diagrams")));
+    ui.list_rail.rail.set_tooltip_text(Some(&s.t("ui-split-list-show")));
+    ui.collapse_list.set_tooltip_text(Some(&s.t("ui-split-list-hide")));
     ui.sort_dd.set_tooltip_text(Some(&s.t("ui-sort-by")));
     drop(s);
     ui.list_opts_busy.set(true);

@@ -327,6 +327,11 @@ ui-m-no-color = No colour
 ui-m-connect = Connect to
 ui-m-properties = Properties…
 ui-m-connections = connections
+ui-m-add-attribute = Add attribute…
+ui-m-add-operation = Add operation…
+ui-m-attribute-example = +String name
+ui-m-operation-example = +total(): Money
+ui-m-member-hint = Visibility: + public · - private · # protected · ~ package. Enter adds, Esc cancels.
 
 ## Renderer chip and help (render-kit/renderers.js)
 ui-r-tip = Renderers — what they are and which one to use
@@ -406,3 +411,5 @@ ui-kind-unknown = Unrecognised type
 ui-bottom-panel = Problems · Comments · Activity
 ui-split-code-show = The code is collapsed — click (or drag) to show it
 ui-split-bottom-show = The bottom panel is collapsed — click (or drag) to show it
+ui-split-list-show = The diagram list is collapsed — click to show it
+ui-split-list-hide = Collapse the diagram list (a strip on the left brings it back)

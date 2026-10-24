@@ -33,6 +33,9 @@
     "ui-o-one": "Exactly one", "ui-o-zero_one": "Zero or one", "ui-o-zero_many": "Zero or many", "ui-o-one_many": "One or many",
     "ui-m-rename": "Rename…", "ui-m-edit-text": "Edit text…", "ui-m-shape": "Shape", "ui-m-color": "Colour", "ui-m-no-color": "No colour",
     "ui-m-connect": "Connect to", "ui-m-properties": "Properties…", "ui-m-connections": "connections",
+    "ui-m-add-attribute": "Add attribute…", "ui-m-add-operation": "Add operation…",
+    "ui-m-attribute-example": "+String name", "ui-m-operation-example": "+total(): Money",
+    "ui-m-member-hint": "Visibility: + public · - private · # protected · ~ package. Enter adds, Esc cancels.",
     "ui-i-node": "Edit element", "ui-i-edge": "Edit connection", "ui-i-save": "Save", "ui-i-delete": "Delete", "ui-i-confirm": "Click again to delete",
     "ui-dir-TB": "Top → bottom (TB)", "ui-dir-BT": "Bottom → top (BT)", "ui-dir-LR": "Left → right (LR)", "ui-dir-RL": "Right → left (RL)"
   };
@@ -435,6 +438,29 @@
     };
   }
 
+  // a class attribute or operation, typed in a small form (UML visibility hint below the field)
+  function addMember(target, operation, x, y) {
+    if (!target) return;
+    form.innerHTML = "";
+    state.open = target;
+    form.appendChild(el("div", { class: "ctor-title" }, t(operation ? "ui-m-add-operation" : "ui-m-add-attribute") + "  " + target.id));
+    var input = el("input", { type: "text", placeholder: t(operation ? "ui-m-operation-example" : "ui-m-attribute-example") });
+    form.appendChild(input);
+    form.appendChild(el("div", { class: "ctor-hint" }, t("ui-m-member-hint")));
+    form.hidden = false;
+    form.style.top = Math.max(8, Math.min(y + 12, window.innerHeight - form.offsetHeight - 8)) + "px";
+    form.style.left = Math.max(8, Math.min(x - 40, window.innerWidth - form.offsetWidth - 8)) + "px";
+    input.focus();
+    form.onkeydown = function (e) {
+      if (e.key === "Escape") closeForm();
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      var text = input.value.trim();
+      if (text) edit("member", { id: target.id, text: text, member: operation ? "operation" : "attribute" });
+      else closeForm();
+    };
+  }
+
   // ---- right-click menu
   var menu = el("div", { id: "ctx-menu", hidden: "" });
   document.body.appendChild(menu);
@@ -510,6 +536,10 @@
     menu.appendChild(el("div", { class: "ctx-head" }, head));
     if (editing && target) {
       menuItem(menu, isEdge ? t("ui-m-edit-text") : t("ui-m-rename"), function () { rename(target, x, y); });
+      if (!isEdge && state.kind === "class" && !target.group) {
+        menuItem(menu, t("ui-m-add-attribute"), function () { addMember(target, false, x, y); });
+        menuItem(menu, t("ui-m-add-operation"), function () { addMember(target, true, x, y); });
+      }
       if (!isEdge && state.kind === "flowchart" && !target.group) {
         menuItem(menu, t("ui-m-shape"), null, { sub: function (sub) {
           SHAPES.concat(["flag"]).forEach(function (sh) {

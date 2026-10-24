@@ -108,6 +108,9 @@ public partial class MainWindow : Window
         DiagramsHeader.Text = T("ui-diagrams").ToUpperInvariant();
         LocalizeListOptions();
         CodeRailText.Text = T("ui-source").ToUpperInvariant();
+        ListRailText.Text = T("ui-diagrams").ToUpperInvariant();
+        ListRail.ToolTip = T("ui-split-list-show");
+        CollapseListButton.ToolTip = T("ui-split-list-hide");
         CodeRail.ToolTip = T("ui-split-code-show");
         BottomRailText.Text = T("ui-bottom-panel").ToUpperInvariant();
         BottomRail.ToolTip = T("ui-split-bottom-show");
@@ -1007,6 +1010,37 @@ public partial class MainWindow : Window
         CodePane.Visibility = collapse ? Visibility.Collapsed : Visibility.Visible;
         CodeSplitter.Visibility = collapse ? Visibility.Collapsed : Visibility.Visible;
         CodeRail.Visibility = collapse ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private GridLength _listWidth = new(240);
+
+    private void OnSidebarSplitterDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        SetListCollapsed(true);
+        e.Handled = true;
+    }
+
+    private void OnCollapseListClick(object sender, RoutedEventArgs e) => SetListCollapsed(true);
+    private void OnListRailClick(object sender, RoutedEventArgs e) => SetListCollapsed(false);
+
+    /// The diagram list collapses to a labelled strip ("DIAGRAMS ›"), like the code and the bottom panel.
+    private void SetListCollapsed(bool collapse)
+    {
+        var col = ((Grid)SidebarPane.Parent).ColumnDefinitions[0];
+        if (collapse)
+        {
+            if (col.ActualWidth > RailSize * 2) _listWidth = col.Width;
+            col.MinWidth = 0;
+            col.Width = new GridLength(RailSize);
+        }
+        else
+        {
+            col.Width = _listWidth.Value > RailSize * 2 ? _listWidth : new GridLength(240);
+            col.MinWidth = 160;
+        }
+        SidebarPane.Visibility = collapse ? Visibility.Collapsed : Visibility.Visible;
+        SidebarSplitter.Visibility = collapse ? Visibility.Collapsed : Visibility.Visible;
+        ListRail.Visibility = collapse ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnBottomSplitterDoubleClick(object sender, MouseButtonEventArgs e)

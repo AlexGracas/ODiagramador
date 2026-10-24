@@ -327,6 +327,11 @@ ui-m-no-color = Sem cor
 ui-m-connect = Ligar a
 ui-m-properties = Propriedades…
 ui-m-connections = ligações
+ui-m-add-attribute = Adicionar atributo…
+ui-m-add-operation = Adicionar operação…
+ui-m-attribute-example = +String nome
+ui-m-operation-example = +calcularTotal(): Dinheiro
+ui-m-member-hint = Visibilidade: + público · - privado · # protegido · ~ pacote. Enter adiciona, Esc cancela.
 
 ## Renderizador em uso e ajuda (render-kit/renderers.js)
 ui-r-tip = Renderizadores — o que são e qual usar
@@ -406,3 +411,5 @@ ui-kind-unknown = Tipo não reconhecido
 ui-bottom-panel = Problemas · Comentários · Atividade
 ui-split-code-show = O código está recolhido — clique (ou arraste) para mostrá-lo
 ui-split-bottom-show = O painel inferior está recolhido — clique (ou arraste) para mostrá-lo
+ui-split-list-show = A lista de diagramas está recolhida — clique para mostrá-la
+ui-split-list-hide = Recolher a lista de diagramas (fica uma faixa à esquerda para trazê-la de volta)

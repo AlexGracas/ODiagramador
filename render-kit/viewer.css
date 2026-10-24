@@ -383,3 +383,4 @@ body.view-mode #undo-btn, body.view-mode #redo-btn, body.view-mode #pal-fixed .p
 #renderer-modal .rm-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--border); }
 #renderer-modal .rm-versions { color: var(--muted); font-size: 11px; }
 #renderer-modal .rm-ok { height: 28px; padding: 0 16px; border: 0; border-radius: 6px; background: var(--info); color: #fff; font: inherit; cursor: pointer; }
+#ctor-form .ctor-hint { margin-top: 6px; max-width: 260px; color: var(--muted); font-size: 11px; line-height: 1.35; }

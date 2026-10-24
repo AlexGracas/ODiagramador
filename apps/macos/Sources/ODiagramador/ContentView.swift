@@ -9,31 +9,48 @@ struct ContentView: View {
     @AppStorage("codeCollapsed") private var codeCollapsed = false
     @AppStorage("bottomHeight") private var bottomHeight = 200.0
     @AppStorage("bottomCollapsed") private var bottomCollapsed = false
+    @AppStorage("listCollapsed") private var listCollapsed = false
+
+    @ViewBuilder
+    private var detail: some View {
+        if state.workspace == nil {
+            Welcome()
+        } else {
+            // double-click a bar (or click its chevron) to collapse / restore the code or the bottom panel
+            CollapsibleSplit(axis: .vertical, collapses: .second, size: $bottomHeight, collapsed: $bottomCollapsed,
+                             minSize: 120, minOther: 260, help: state.t("ui-split-bottom-tip"),
+                             collapsedTitle: state.t("ui-bottom-panel"), collapsedIcon: "rectangle.bottomthird.inset.filled",
+                             collapsedHelp: state.t("ui-split-bottom-show")) {
+                CollapsibleSplit(axis: .horizontal, collapses: .first, size: $codeWidth, collapsed: $codeCollapsed,
+                                 minSize: 220, minOther: 320, help: state.t("ui-split-code-tip"),
+                                 collapsedTitle: state.t("ui-source"), collapsedIcon: "chevron.left.forwardslash.chevron.right",
+                                 collapsedHelp: state.t("ui-split-code-show")) {
+                    SourcePane()
+                } second: {
+                    PreviewPane()
+                }
+            } second: {
+                BottomPanel()
+            }
+        }
+    }
 
     var body: some View {
-        NavigationSplitView {
+        // the diagram list hides with the toolbar's sidebar button (or by dragging it closed) and leaves a
+        // labelled strip, like the code and the bottom panel
+        NavigationSplitView(columnVisibility: Binding(get: { listCollapsed ? .detailOnly : .all },
+                                                      set: { listCollapsed = $0 == .detailOnly })) {
             Sidebar(showingNew: $showingNew)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240)
         } detail: {
-            if state.workspace == nil {
-                Welcome()
-            } else {
-                // double-click a bar (or click its chevron) to collapse / restore the code or the bottom panel
-                CollapsibleSplit(axis: .vertical, collapses: .second, size: $bottomHeight, collapsed: $bottomCollapsed,
-                                 minSize: 120, minOther: 260, help: state.t("ui-split-bottom-tip"),
-                                 collapsedTitle: state.t("ui-bottom-panel"), collapsedIcon: "rectangle.bottomthird.inset.filled",
-                                 collapsedHelp: state.t("ui-split-bottom-show")) {
-                    CollapsibleSplit(axis: .horizontal, collapses: .first, size: $codeWidth, collapsed: $codeCollapsed,
-                                     minSize: 220, minOther: 320, help: state.t("ui-split-code-tip"),
-                                     collapsedTitle: state.t("ui-source"), collapsedIcon: "chevron.left.forwardslash.chevron.right",
-                                     collapsedHelp: state.t("ui-split-code-show")) {
-                        SourcePane()
-                    } second: {
-                        PreviewPane()
+            HStack(spacing: 0) {
+                if listCollapsed {
+                    CollapsedStrip(axis: .horizontal, title: state.t("ui-diagrams"), icon: "list.bullet.rectangle",
+                                   chevron: "chevron.compact.right", help: state.t("ui-split-list-show")) {
+                        withAnimation(.easeInOut(duration: 0.18)) { listCollapsed = false }
                     }
-                } second: {
-                    BottomPanel()
                 }
+                detail
             }
         }
         .toolbar { Toolbar(showingNew: $showingNew) }
@@ -55,6 +72,7 @@ struct Sidebar: View {
     @Binding var showingNew: Bool
     @AppStorage("listGroup") private var group = "none" // none | kind | folder
     @AppStorage("listSort") private var sort = "name"   // name | date
+    @AppStorage("listCollapsed") private var listCollapsed = false
 
     private struct Group: Identifiable {
         let id: String
@@ -124,6 +142,17 @@ struct Sidebar: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .help(state.t("ui-group-by") + " / " + state.t("ui-sort-by"))
                 Spacer(minLength: 0)
+                // hide the list: it leaves a "DIAGRAMAS" strip on the left that brings it back
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) { listCollapsed = true }
+                } label: {
+                    Image(systemName: "chevron.left.2")
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 20, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .help(state.t("ui-split-list-hide"))
             }
             .font(.caption)
             .padding(.horizontal, 12)

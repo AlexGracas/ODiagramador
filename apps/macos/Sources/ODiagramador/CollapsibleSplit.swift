@@ -58,9 +58,6 @@ struct CollapsibleSplit<First: View, Second: View>: View {
         withAnimation(.easeInOut(duration: 0.18)) { collapsed.toggle() }
     }
 
-    /// Thickness of the strip a collapsed pane leaves.
-    private let rail: Double = 24
-
     @ViewBuilder
     private func bar(total: Double, pane: Double) -> some View {
         if collapsed { collapsedRail(total: total) } else { divider(total: total, pane: pane) }
@@ -68,44 +65,9 @@ struct CollapsibleSplit<First: View, Second: View>: View {
 
     /// The hidden pane's name and an arrow: click (or drag) it to bring the pane back.
     private func collapsedRail(total: Double) -> some View {
-        let title = Text(collapsedTitle).textCase(.uppercase).lineLimit(1).fixedSize()
-        return Group {
-            if axis == .horizontal {
-                // arrow and icon upright, the name written top to bottom below them
-                VStack(spacing: 8) {
-                    Image(systemName: chevron)
-                    Image(systemName: collapsedIcon)
-                    title.frame(width: 240, height: rail, alignment: .leading).rotationEffect(.degrees(90)).frame(width: rail, height: 240)
-                    Spacer(minLength: 0)
-                }
-                .padding(.top, 10)
-            } else {
-                HStack(spacing: 6) {
-                    Image(systemName: chevron)
-                    Image(systemName: collapsedIcon)
-                    title
-                    Spacer(minLength: 0)
-                }
-                .padding(.leading, 10)
-            }
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
-        .frame(width: axis == .horizontal ? rail : nil, height: axis == .vertical ? rail : nil)
-        .background(.bar)
-        .overlay(alignment: axis == .horizontal ? .leading : .top) {
-            Rectangle().fill(Color(nsColor: .separatorColor)).frame(width: axis == .horizontal ? 1 : nil, height: axis == .vertical ? 1 : nil)
-        }
-        .overlay(alignment: axis == .horizontal ? .trailing : .bottom) {
-            Rectangle().fill(Color(nsColor: .separatorColor)).frame(width: axis == .horizontal ? 1 : nil, height: axis == .vertical ? 1 : nil)
-        }
-        .contentShape(Rectangle())
-        .help(collapsedHelp.isEmpty ? help : collapsedHelp)
-        .onHover { inside in
-            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-        }
-        .onTapGesture(perform: toggle)
-        .gesture(resize(total: total, pane: 0))
+        CollapsedStrip(axis: axis, title: collapsedTitle, icon: collapsedIcon, chevron: chevron,
+                       help: collapsedHelp.isEmpty ? help : collapsedHelp, action: toggle)
+            .gesture(resize(total: total, pane: 0))
     }
 
     private func resize(total: Double, pane: Double) -> some Gesture {
@@ -149,5 +111,57 @@ private struct Hidden: ViewModifier {
     let on: Bool
     func body(content: Content) -> some View {
         content.opacity(on ? 0 : 1).allowsHitTesting(!on).accessibilityHidden(on)
+    }
+}
+
+/// The strip a collapsed pane leaves (the code, the bottom panel, the diagram list): its name, an icon and an
+/// arrow towards where it comes back from. Clicking it brings the pane back.
+struct CollapsedStrip: View {
+    let axis: Axis
+    let title: String
+    let icon: String
+    let chevron: String
+    let help: String
+    let action: () -> Void
+    private let rail: Double = 24
+
+    var body: some View {
+        let name = Text(title).textCase(.uppercase).lineLimit(1).fixedSize()
+        Group {
+            if axis == .horizontal {
+                // arrow and icon upright, the name written top to bottom below them
+                VStack(spacing: 8) {
+                    Image(systemName: chevron)
+                    Image(systemName: icon)
+                    name.frame(width: 240, height: rail, alignment: .leading).rotationEffect(.degrees(90)).frame(width: rail, height: 240)
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 10)
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: chevron)
+                    Image(systemName: icon)
+                    name
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, 10)
+            }
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .frame(width: axis == .horizontal ? rail : nil, height: axis == .vertical ? rail : nil)
+        .background(.bar)
+        .overlay(alignment: axis == .horizontal ? .leading : .top) { line }
+        .overlay(alignment: axis == .horizontal ? .trailing : .bottom) { line }
+        .contentShape(Rectangle())
+        .help(help)
+        .onHover { inside in
+            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+        .onTapGesture(perform: action)
+    }
+
+    private var line: some View {
+        Rectangle().fill(Color(nsColor: .separatorColor)).frame(width: axis == .horizontal ? 1 : nil, height: axis == .vertical ? 1 : nil)
     }
 }

@@ -115,8 +115,14 @@
             </Grid.ColumnDefinitions>
 
             <!-- sidebar -->
-            <DockPanel Grid.Column="0">
-                <TextBlock x:Name="DiagramsHeader" DockPanel.Dock="Top" Margin="8,6,8,2" Foreground="{StaticResource MutedBrush}" />
+            <DockPanel Grid.Column="0" x:Name="SidebarPane">
+                <DockPanel DockPanel.Dock="Top" Margin="8,6,4,2">
+                    <!-- hide the list: it leaves a "DIAGRAMS" strip that brings it back -->
+                    <Button x:Name="CollapseListButton" DockPanel.Dock="Right" Click="OnCollapseListClick" Cursor="Hand" BorderThickness="0" Background="Transparent" Padding="4,0">
+                        <TextBlock Text="&#xE76B;&#xE76B;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="9" Foreground="{StaticResource MutedBrush}" />
+                    </Button>
+                    <TextBlock x:Name="DiagramsHeader" Foreground="{StaticResource MutedBrush}" />
+                </DockPanel>
                 <!-- how the list is organised -->
                 <Grid DockPanel.Dock="Top" Margin="6,0,6,4">
                     <Grid.ColumnDefinitions>
@@ -167,7 +173,19 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
             </DockPanel>
-            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" />
+            <!-- strip left by the collapsed diagram list: its name, click to bring it back -->
+            <Button x:Name="ListRail" Grid.Column="0" Visibility="Collapsed" Click="OnListRailClick" Cursor="Hand"
+                    BorderThickness="0,0,1,0" Padding="0,10,0,0" VerticalContentAlignment="Top" HorizontalContentAlignment="Center"
+                    BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                <StackPanel>
+                    <TextBlock Text="&#xE76C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10" HorizontalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+                    <TextBlock x:Name="ListRailText" Margin="0,8,0,0" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}">
+                        <TextBlock.LayoutTransform><RotateTransform Angle="90" /></TextBlock.LayoutTransform>
+                    </TextBlock>
+                </StackPanel>
+            </Button>
+            <!-- drag to resize, double-click to collapse / restore the diagram list -->
+            <GridSplitter x:Name="SidebarSplitter" Grid.Column="1" Width="4" HorizontalAlignment="Stretch" MouseDoubleClick="OnSidebarSplitterDoubleClick" />
 
             <Grid Grid.Column="2" x:Name="RightGrid">
                 <Grid.RowDefinitions>

@@ -680,10 +680,54 @@ pub fn apply(src: &str, action: &str, params: &Value) -> Result<String, String> 
         ("delete", Kind::Sequence) => seq_delete(src, param(params, "id")?),
         ("delete", k) => ident_delete(src, param(params, "id")?, k),
         ("style", Kind::Flowchart | Kind::Class) => set_style(src, param(params, "id")?, params),
+        ("member", Kind::Class) => class_member(src, param(params, "id")?, param(params, "text")?, params.get("member").and_then(Value::as_str) == Some("operation")),
         ("edge_label", Kind::Flowchart) => flow_edge(src, param(params, "from")?, param(params, "to")?, index, Some(params.get("label").and_then(Value::as_str))),
         ("edge_delete", Kind::Flowchart) => flow_edge(src, param(params, "from")?, param(params, "to")?, index, None),
         (a, k) => Err(format!("`{a}` is not available for {} diagrams", k.id())),
     }
+}
+
+/// Adds an attribute or an operation to a class: inside its `class X { … }` block (before the closing
+/// brace), turning a bare `class X` into a block, or as `X : member` when the class has no declaration.
+fn class_member(src: &str, id: &str, text: &str, operation: bool) -> Result<String, String> {
+    let text = text.trim();
+    if text.contains(['\n', '{', '}']) {
+        return Err("a member is one line, without braces".into());
+    }
+    let mut member = if operation && !text.contains('(') { format!("{text}()") } else { text.to_string() };
+    // UML writes the return type as `total(): Money`; Mermaid wants `total() Money` (it draws the colon itself)
+    if let Some(close) = member.rfind(')') {
+        let rest = member[close + 1..].trim_start();
+        if let Some(ty) = rest.strip_prefix(':') {
+            member = format!("{} {}", &member[..=close], ty.trim());
+        }
+    }
+    let e = regex::escape(id);
+    let block = Regex::new(&format!(r"^\s*class\s+{e}\b[^{{}}:]*\{{\s*$")).unwrap();
+    let bare = Regex::new(&format!(r#"^\s*class\s+{e}(\s*~[^~]*~)?(\s*\["[^"]*"\])?\s*;?\s*$"#)).unwrap();
+    let mut lines = lines_of(src);
+    if let Some(start) = lines.iter().position(|l| block.is_match(l)) {
+        let Some(end) = lines.iter().skip(start + 1).position(|l| l.trim() == "}").map(|i| start + 1 + i) else {
+            return Err(format!("the block of class `{id}` is not closed"));
+        };
+        // same indentation as the members already there, else one level deeper than `class`
+        let ind = lines[start + 1..end].iter().find(|l| !l.trim().is_empty()).map(|l| indent(l)).unwrap_or_else(|| indent(&lines[start]) + "    ");
+        lines.insert(end, format!("{ind}{member}"));
+        return Ok(join(lines));
+    }
+    if let Some(i) = lines.iter().position(|l| bare.is_match(l)) {
+        let ind = indent(&lines[i]);
+        let head = lines[i].trim_end().trim_end_matches(';').to_string();
+        lines.splice(i..=i, [format!("{head} {{"), format!("{ind}    {member}"), format!("{ind}}}")]);
+        return Ok(join(lines));
+    }
+    if !has_token(src, id) {
+        return Err(format!("class `{id}` not found"));
+    }
+    let header = header_index(&lines.iter().map(String::as_str).collect::<Vec<_>>()).unwrap_or(0);
+    let ind = lines.iter().skip(header + 1).find(|l| !l.trim().is_empty()).map(|l| indent(l)).unwrap_or_else(|| "    ".into());
+    lines.push(format!("{ind}{id} : {member}"));
+    Ok(join(lines))
 }
 
 /// Colours of one element (`style <id> fill:…,stroke:…,color:…`): given keys are set, an empty value
@@ -733,6 +777,21 @@ mod tests {
     use serde_json::json;
 
     const FLOW: &str = "flowchart LR\n    a([Start]) --> b{Valid?}\n    b -->|yes| c[Save] --> d[(DB)]\n    b -- no --> e[Retry]\n    e -.-> a\n    subgraph g [Group]\n        c\n    end\n    style c fill:#f9f\n    class c,e hot\n%% @odg pos c 10,20\n";
+
+    #[test]
+    fn class_members_go_into_the_block_or_become_one() {
+        let src = "classDiagram\n    class Order {\n        +String id\n    }\n    class Customer\n    Order --> Item\n";
+        let a = apply(src, "member", &json!({"id": "Order", "text": "+Date createdAt"})).unwrap();
+        assert!(a.contains("        +String id\n        +Date createdAt\n    }"), "{a}");
+        let b = apply(src, "member", &json!({"id": "Customer", "text": "+email", "member": "operation"})).unwrap();
+        assert!(b.contains("    class Customer {\n        +email()\n    }"), "{b}");
+        let c = apply(src, "member", &json!({"id": "Item", "text": "+int qty"})).unwrap();
+        assert!(c.trim_end().ends_with("    Item : +int qty"), "{c}");
+        assert!(apply(src, "member", &json!({"id": "Order", "text": "x { y"})).is_err());
+        assert!(apply(src, "member", &json!({"id": "Nope", "text": "x"})).is_err());
+        let empty = apply("classDiagram\n  class A {\n  }\n", "member", &json!({"id": "A", "text": "total(): Money", "member": "operation"})).unwrap();
+        assert!(empty.contains("  class A {\n      total() Money\n  }"), "{empty}");
+    }
 
     #[test]
     fn colours_set_update_and_clear() {
