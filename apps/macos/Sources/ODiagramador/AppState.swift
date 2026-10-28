@@ -9,6 +9,9 @@ final class AppState: ObservableObject {
     @Published var workspace: URL?
     @Published var diagrams: [DiagramInfo] = []
     @Published var selectedPath: String?
+    var selectedDiagram: DiagramInfo? {
+        diagrams.first(where: { $0.path == selectedPath })
+    }
     @Published var source: String = "" {
         didSet { if source != oldValue && !loading { sourceEdited() } }
     }
