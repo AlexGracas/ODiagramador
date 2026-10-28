@@ -73,6 +73,7 @@ struct Sidebar: View {
     @AppStorage("listGroup") private var group = "none" // none | kind | folder
     @AppStorage("listSort") private var sort = "name"   // name | date
     @AppStorage("listCollapsed") private var listCollapsed = false
+    @State private var collapsedGroups: Set<String> = []
 
     private struct Group: Identifiable {
         let id: String
@@ -108,16 +109,42 @@ struct Sidebar: View {
     var body: some View {
         List(selection: Binding(get: { state.selectedPath }, set: { state.select($0) })) {
             ForEach(groups) { g in
+                let isCollapsed = collapsedGroups.contains(g.id)
                 Section {
-                    ForEach(g.items) { d in
-                        DiagramRow(d: d, showKind: group != "kind", showFolder: group != "folder")
-                            .tag(d.path)
+                    if !isCollapsed {
+                        ForEach(g.items) { d in
+                            DiagramRow(d: d, showKind: group != "kind", showFolder: group != "folder")
+                                .tag(d.path)
+                        }
                     }
                 } header: {
-                    HStack {
-                        Text(g.title)
-                        Spacer()
-                        if group != "none" { Text("\(g.items.count)").monospacedDigit() }
+                    if group != "none" {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                if isCollapsed {
+                                    collapsedGroups.remove(g.id)
+                                } else {
+                                    collapsedGroups.insert(g.id)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 12)
+                                Text(g.title)
+                                Spacer()
+                                Text("\(g.items.count)").monospacedDigit()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        HStack {
+                            Text(g.title)
+                            Spacer()
+                        }
                     }
                 }
             }
@@ -194,12 +221,6 @@ struct DiagramRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            if !shortDate.isEmpty {
-                Text(shortDate)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
             StatusIcon(status: d.status)
             VStack(alignment: .leading, spacing: 2) {
                 Text(d.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? d.title! : d.name).lineLimit(1)
@@ -211,11 +232,20 @@ struct DiagramRow: View {
                 }
             }
             Spacer(minLength: 4)
-            if d.openFeedback > 0 {
-                Label("\(d.openFeedback)", systemImage: "text.bubble")
-                    .labelStyle(.titleAndIcon)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .trailing, spacing: 2) {
+                if d.openFeedback > 0 {
+                    Label("\(d.openFeedback)", systemImage: "text.bubble")
+                        .labelStyle(.titleAndIcon)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                if !shortDate.isEmpty {
+                    Text(shortDate)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
             }
         }
         .help(d.description?.isEmpty == false ? "\(d.path)\n\n\(d.description!)" : (d.kindLabel.map { "\(d.path) · \($0)" } ?? d.path))

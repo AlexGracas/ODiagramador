@@ -145,22 +145,35 @@
                 <ListBox x:Name="DiagramList" BorderThickness="0" SelectionChanged="OnDiagramSelected">
                     <ListBox.GroupStyle>
                         <GroupStyle>
-                            <GroupStyle.HeaderTemplate>
-                                <DataTemplate>
-                                    <DockPanel Margin="4,8,6,2">
-                                        <TextBlock DockPanel.Dock="Right" Text="{Binding ItemCount}" FontSize="11" Foreground="{StaticResource MutedBrush}" />
-                                        <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
-                                    </DockPanel>
-                                </DataTemplate>
-                            </GroupStyle.HeaderTemplate>
+                            <GroupStyle.ContainerStyle>
+                                <Style TargetType="{x:Type GroupItem}">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="{x:Type GroupItem}">
+                                                <Expander IsExpanded="True">
+                                                    <Expander.Header>
+                                                        <DockPanel Margin="4,2,6,2">
+                                                            <TextBlock DockPanel.Dock="Right" Text="{Binding ItemCount}" FontSize="11" Foreground="{StaticResource MutedBrush}" />
+                                                            <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+                                                        </DockPanel>
+                                                    </Expander.Header>
+                                                    <ItemsPresenter />
+                                                </Expander>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </GroupStyle.ContainerStyle>
                         </GroupStyle>
                     </ListBox.GroupStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <DockPanel Margin="2" ToolTip="{Binding TooltipText}">
-                                <TextBlock DockPanel.Dock="Left" Text="{Binding ShortDate}" Width="35" Foreground="{StaticResource MutedBrush}" FontSize="10.5" VerticalAlignment="Center" />
                                 <TextBlock DockPanel.Dock="Left" Text="{Binding Glyph}" Width="20" VerticalAlignment="Center" />
-                                <TextBlock DockPanel.Dock="Right" Text="{Binding Badge}" Foreground="{StaticResource MutedBrush}" />
+                                <StackPanel DockPanel.Dock="Right" VerticalAlignment="Bottom" HorizontalAlignment="Right">
+                                    <TextBlock Text="{Binding Badge}" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Right" />
+                                    <TextBlock Text="{Binding ShortDate}" Foreground="{StaticResource MutedBrush}" FontSize="10.5" HorizontalAlignment="Right" />
+                                </StackPanel>
                                 <StackPanel>
                                     <TextBlock Text="{Binding DisplayTitle}" TextTrimming="CharacterEllipsis" />
                                     <StackPanel Orientation="Horizontal" Margin="0,1,0,0">

@@ -73,6 +73,7 @@ struct State {
     /// The comment context was edited by the human: keep it until sent or regenerated.
     context_edited: bool,
     context_setting: bool,
+    collapsed_groups: std::collections::HashSet<String>,
 }
 
 impl State {
@@ -319,6 +320,7 @@ fn build_ui(app: &adw::Application, args: &[String]) {
         view_visible: vec![],
         context_edited: false,
         context_setting: false,
+        collapsed_groups: std::collections::HashSet::new(),
     }));
 
     // ---- header
@@ -1143,7 +1145,7 @@ fn format_short_date(rfc3339: &str) -> String {
 }
 
 fn refresh_list(ui: &Ui) {
-    let (list, lang, group, sort, unknown, root, no_project) = {
+    let (list, lang, group, sort, unknown, root, no_project, collapsed_groups) = {
         let s = ui.state.borrow();
         let Some(ws) = &s.ws else { return };
         (
@@ -1154,6 +1156,7 @@ fn refresh_list(ui: &Ui) {
             s.t("ui-kind-unknown"),
             s.t("ui-root-folder"),
             s.t("ui-no-project"),
+            s.collapsed_groups.clone(),
         )
     };
     while let Some(child) = ui.list.first_child() {
@@ -1176,11 +1179,48 @@ fn refresh_list(ui: &Ui) {
     let mut last_group: Option<String> = None;
     for d in ordered {
         if let Some(g) = group_of(d) {
+            let is_collapsed = collapsed_groups.contains(&g);
             if last_group.as_ref() != Some(&g) {
                 let count = list.iter().filter(|x| group_of(x).as_ref() == Some(&g)).count();
-                let head = gtk::Label::builder().label(format!("{g}  ·  {count}")).xalign(0.0).css_classes(["caption-heading", "dim-label"]).margin_start(8).margin_top(8).margin_bottom(2).build();
-                ui.list.append(&gtk::ListBoxRow::builder().child(&head).selectable(false).activatable(false).build());
-                last_group = Some(g);
+                let btn = gtk::Button::builder()
+                    .has_frame(false)
+                    .css_classes(["flat"])
+                    .margin_top(4)
+                    .margin_bottom(2)
+                    .build();
+                let hbox = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(6).build();
+                let chevron = gtk::Image::from_icon_name(if is_collapsed { "pan-end-symbolic" } else { "pan-down-symbolic" });
+                chevron.set_pixel_size(12);
+                let lbl = gtk::Label::builder()
+                    .label(format!("{g}  ·  {count}"))
+                    .xalign(0.0)
+                    .css_classes(["caption-heading", "dim-label"])
+                    .hexpand(true)
+                    .build();
+                hbox.append(&chevron);
+                hbox.append(&lbl);
+                btn.set_child(Some(&hbox));
+
+                let u = ui.clone();
+                let g_name = g.clone();
+                btn.connect_clicked(move |_| {
+                    {
+                        let mut s = u.state.borrow_mut();
+                        if s.collapsed_groups.contains(&g_name) {
+                            s.collapsed_groups.remove(&g_name);
+                        } else {
+                            s.collapsed_groups.insert(g_name.clone());
+                        }
+                    }
+                    refresh_list(&u);
+                });
+
+                ui.list.append(&gtk::ListBoxRow::builder().child(&btn).selectable(false).activatable(false).build());
+                last_group = Some(g.clone());
+            }
+
+            if is_collapsed {
+                continue;
             }
         }
         // second line: coloured diagram type + folder (each left out when it is the group)
@@ -1222,19 +1262,37 @@ fn refresh_list(ui: &Ui) {
         let row = adw::ActionRow::builder().title(glib::markup_escape_text(display_title).as_str()).subtitle(subtitle.as_str()).tooltip_text(tooltip.as_str()).build();
         let icon = gtk::Image::from_icon_name(status_icon(d.status.as_ref().map(|s| (s.valid, s.warnings))));
         icon.set_widget_name("status");
+        row.add_prefix(&icon);
 
-        let prefix_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(6).build();
-        let short_date = format_short_date(&d.modified);
-        if !short_date.is_empty() {
-            let date_lbl = gtk::Label::builder().label(short_date).css_classes(["caption", "dim-label"]).valign(gtk::Align::Center).build();
-            prefix_box.append(&date_lbl);
-        }
-        prefix_box.append(&icon);
-        row.add_prefix(&prefix_box);
+        let suffix_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .valign(gtk::Align::Fill)
+            .halign(gtk::Align::End)
+            .spacing(2)
+            .build();
 
         if d.open_feedback > 0 {
-            row.add_suffix(&gtk::Label::builder().label(format!("💬 {}", d.open_feedback)).css_classes(["caption"]).build());
+            suffix_box.append(&gtk::Label::builder()
+                .label(format!("💬 {}", d.open_feedback))
+                .css_classes(["caption"])
+                .halign(gtk::Align::End)
+                .valign(gtk::Align::Start)
+                .build());
         }
+
+        let short_date = format_short_date(&d.modified);
+        if !short_date.is_empty() {
+            let date_lbl = gtk::Label::builder()
+                .label(short_date)
+                .css_classes(["caption", "dim-label"])
+                .halign(gtk::Align::End)
+                .valign(gtk::Align::End)
+                .vexpand(true)
+                .build();
+            suffix_box.append(&date_lbl);
+        }
+        row.add_suffix(&suffix_box);
+
         let lrow = gtk::ListBoxRow::builder().child(&row).name(d.path.as_str()).build();
         ui.list.append(&lrow);
         if ui.state.borrow().selected.as_deref() == Some(d.path.as_str()) {
