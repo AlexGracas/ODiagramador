@@ -259,6 +259,10 @@ pub fn invoke(method: &str, a: &Value) -> R {
         }
         // MCP configuration snippets for the "Copy MCP config" button.
         "mcp_config" => Ok(odg_core::mcp_config::snippets(arg(a, "odg_path")?, arg(a, "workspace")?, opt(a, "url"), opt(a, "token"))),
+        "install_mcp" => {
+            let path = odg_core::mcp_config::install_to_client(arg(a, "client")?, arg(a, "odg_path")?, arg(a, "workspace")?, opt(a, "url"), opt(a, "token"))?;
+            Ok(json!({"path": path.to_string_lossy()}))
+        }
         _ => Err(format!("unknown method `{method}`")),
     }
 }

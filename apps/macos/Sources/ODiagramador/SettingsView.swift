@@ -197,6 +197,8 @@ struct MCPClientIcon: View {
         case "claude-code": BrandIcon.claudeCode.image
         case "claude-desktop": BrandIcon.claude.image
         case "cursor": BrandIcon.cursor.image
+        case "kiro": BrandIcon.kiro.image
+        case "antigravity": Image(systemName: "sparkles")
         case "codex": Image(systemName: "terminal")
         default: Image(systemName: "curlybraces")
         }

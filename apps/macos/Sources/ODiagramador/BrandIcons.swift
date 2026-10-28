@@ -7,6 +7,7 @@ enum BrandIcon: String {
     case claude
     case claudeCode = "claudecode"
     case cursor
+    case kiro
 
     /// Claude marks keep their orange; the others are template images that follow light/dark mode.
     private var tint: String? {

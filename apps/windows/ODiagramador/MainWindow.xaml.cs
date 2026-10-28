@@ -52,7 +52,7 @@ public partial class MainWindow : Window
 
     internal static readonly (string Id, string Name)[] McpClients =
     {
-        ("claude-code", "Claude Code"), ("codex", "Codex"), ("cursor", "Cursor"), ("claude-desktop", "Claude Desktop"),
+        ("claude-code", "Claude Code"), ("codex", "Codex"), ("cursor", "Cursor"), ("claude-desktop", "Claude Desktop"), ("kiro", "Kiro"), ("antigravity", "Antigravity"),
     };
 
     public MainWindow()
@@ -248,12 +248,38 @@ public partial class MainWindow : Window
         }
         var name = McpClients.FirstOrDefault(c => c.Id == client).Name ?? T("ui-mcp-other");
         var copied = TrySetClipboard(text);
+
+        string? installedPath = null;
+        try
+        {
+            var installArgs = new JsonObject
+            {
+                ["client"] = client,
+                ["odg_path"] = Path.Combine(AppContext.BaseDirectory, "odg.exe"),
+                ["workspace"] = _workspace,
+            };
+            if (remote)
+            {
+                installArgs["url"] = Remote.Url;
+                installArgs["token"] = Prefs.McpToken;
+            }
+            var res = Core.CallNode<JsonObject>("install_mcp", installArgs);
+            installedPath = res?["path"]?.GetValue<string>();
+        }
+        catch (Exception ex)
+        {
+            App.Log($"install_mcp skipped or failed: {ex.Message}");
+        }
+
         var howto = T(client switch
         {
-            "claude-code" or "codex" or "cursor" or "claude-desktop" => "ui-mcp-howto-" + client,
+            "claude-code" or "codex" or "cursor" or "claude-desktop" or "kiro" or "antigravity" => "ui-mcp-howto-" + client,
             _ => "ui-mcp-howto-json",
         });
-        Prompt.McpConfig(owner, name, copied ? "✓  " + T("ui-mcp-copied", new { app = name }) : T("ui-mcp-copy-failed"),
+        var statusMsg = installedPath is not null
+            ? "✓  " + T("ui-mcp-installed", new { app = name, path = installedPath })
+            : copied ? "✓  " + T("ui-mcp-copied", new { app = name }) : T("ui-mcp-copy-failed");
+        Prompt.McpConfig(owner, name, statusMsg,
             T("ui-mcp-next-step") + " " + howto, text, T("ui-mcp-copy-again"), () => TrySetClipboard(text));
     }
 

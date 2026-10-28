@@ -47,6 +47,7 @@
  *   set_config       {workspace, lang?, theme?, font?}   (merges; "" clears)
  *   mcp_config       {odg_path, workspace, url?, token?} -> {json, claude_code, codex,
  *                                                          remote_json?, remote_claude_code?, remote_codex?}
+ *   install_mcp      {client, odg_path, workspace, url?, token?} -> {path}
  */
 #ifndef ODG_FFI_H
 #define ODG_FFI_H

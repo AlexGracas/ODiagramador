@@ -1704,22 +1704,26 @@ fn export(ui: &Ui, png: bool) {
     });
 }
 
-/// Copies the config for `client` and returns the confirmation for the caller to show where the user clicked.
+/// Copies (or directly installs) the config for `client` and returns the confirmation for the caller to show where the user clicked.
 pub(crate) fn copy_mcp_config(ui: &Ui, client: &str, remote: bool) -> String {
     let s = ui.state.borrow();
     let Some(ws) = &s.ws else { return s.t("ui-mcp-need-folder").split(':').next().unwrap_or_default().to_string() };
     let w = ws.root().to_string_lossy().to_string();
     let url = remote.then(|| RemoteMcp::url(&s.prefs));
     let token = remote.then_some(s.prefs.mcp_token.as_str());
-    let all = odg_core::mcp_config::snippets(&prefs::odg_exe(), &w, url.as_deref(), token);
+    let exe = prefs::odg_exe();
+    let all = odg_core::mcp_config::snippets(&exe, &w, url.as_deref(), token);
     let text = odg_core::mcp_config::snippet_for(&all, client, remote);
     let name = MCP_CLIENTS.iter().find(|(id, _)| *id == client).map(|(_, n)| n.to_string()).unwrap_or_else(|| s.t("ui-mcp-other"));
-    match gdk::Display::default() {
-        Some(display) => {
-            display.clipboard().set_text(&text);
-            i18n::t(s.lang, "ui-mcp-copied", &[("app", name.as_str().into())])
-        }
-        None => s.t("ui-mcp-copy-failed"),
+    if let Some(display) = gdk::Display::default() {
+        display.clipboard().set_text(&text);
+    }
+    // Attempt direct installation if supported for this client
+    if let Ok(path) = odg_core::mcp_config::install_to_client(client, &exe, &w, url.as_deref(), token) {
+        let p_str = path.to_string_lossy();
+        i18n::t(s.lang, "ui-mcp-installed", &[("app", name.as_str().into()), ("path", p_str.as_ref().into())])
+    } else {
+        i18n::t(s.lang, "ui-mcp-copied", &[("app", name.as_str().into())])
     }
 }
 

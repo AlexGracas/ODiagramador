@@ -64,12 +64,14 @@ public static class BrandIcons
         VerticalAlignment = VerticalAlignment.Center,
     };
 
-    /// <summary>Icon for an MCP client id (claude-code, codex, cursor, claude-desktop, json).</summary>
+    /// <summary>Icon for an MCP client id (claude-code, codex, cursor, claude-desktop, kiro, antigravity, json).</summary>
     public static FrameworkElement ForClient(string id) => id switch
     {
         "claude-code" => Create("claudecode", 16, ClaudeOrange) ?? Glyph("\uE756"),
         "claude-desktop" => Create("claude", 16, ClaudeOrange) ?? Glyph("\uE8BD"),
         "cursor" => Create("cursor") ?? Glyph("\uE8B0"),
+        "kiro" => Create("kiro") ?? Glyph("\uE99A"),
+        "antigravity" => Glyph("\uE721"),
         "codex" => Glyph("\uE756"),
         _ => Glyph("\uE943"),
     };

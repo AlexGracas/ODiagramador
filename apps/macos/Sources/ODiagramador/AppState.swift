@@ -559,10 +559,10 @@ final class AppState: ObservableObject {
 
     /// Targets of the MCP menu: id → display name.
     static let mcpClients: [(id: String, name: String)] = [
-        ("claude-code", "Claude Code"), ("codex", "Codex"), ("cursor", "Cursor"), ("claude-desktop", "Claude Desktop"),
+        ("claude-code", "Claude Code"), ("codex", "Codex"), ("cursor", "Cursor"), ("claude-desktop", "Claude Desktop"), ("kiro", "Kiro"), ("antigravity", "Antigravity"),
     ]
 
-    /// Copies the MCP configuration for `client` (local stdio, or the remote HTTP server when `remoteURL`).
+    /// Copies (or installs) the MCP configuration for `client` (local stdio, or the remote HTTP server when `remoteURL`).
     func copyMcpConfig(_ client: String, remote remoteURL: Bool = false) {
         guard let ws = workspace else {
             showToast(t("ui-no-workspace"))
@@ -586,7 +586,15 @@ final class AppState: ObservableObject {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         let name = AppState.mcpClients.first(where: { $0.id == client })?.name ?? t("ui-mcp-other")
-        showToast(t("ui-mcp-copied", ["app": name]))
+
+        var installArgs = args
+        installArgs["client"] = client
+        struct InstallResult: Decodable { let path: String }
+        if let res = try? Core.call("install_mcp", installArgs, as: InstallResult.self) {
+            showToast(t("ui-mcp-installed", ["app": name, "path": res.path]))
+        } else {
+            showToast(t("ui-mcp-copied", ["app": name]))
+        }
     }
 
     /// odiagramador://open?workspace=/abs/path&path=diagrams/x.mmd

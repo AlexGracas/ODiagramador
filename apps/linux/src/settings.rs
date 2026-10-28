@@ -10,7 +10,14 @@ use crate::prefs::{new_token, RemoteMcp, RemoteStatus};
 use crate::{apply_appearance, apply_editor_font, check_updates, copy_mcp_config, restart_remote, set_diagram_font, set_language, Ui};
 
 /// MCP clients offered in the menus: (id, name). "json" = any other client.
-pub const MCP_CLIENTS: &[(&str, &str)] = &[("claude-code", "Claude Code"), ("codex", "Codex"), ("cursor", "Cursor"), ("claude-desktop", "Claude Desktop")];
+pub const MCP_CLIENTS: &[(&str, &str)] = &[
+    ("claude-code", "Claude Code"),
+    ("codex", "Codex"),
+    ("cursor", "Cursor"),
+    ("claude-desktop", "Claude Desktop"),
+    ("kiro", "Kiro"),
+    ("antigravity", "Antigravity"),
+];
 
 const CLAUDE_ORANGE: &str = "#D97757";
 
@@ -20,6 +27,7 @@ fn brand_svg(name: &str) -> Option<&'static str> {
         "claude" => include_str!("../../../assets/icons/claude.svg"),
         "claudecode" => include_str!("../../../assets/icons/claudecode.svg"),
         "cursor" => include_str!("../../../assets/icons/cursor.svg"),
+        "kiro" => include_str!("../../../assets/icons/kiro.svg"),
         _ => return None,
     })
 }
@@ -41,10 +49,11 @@ pub fn client_icon(id: &str) -> gtk::Image {
         "claude-code" => brand_image("claudecode", Some(CLAUDE_ORANGE)),
         "claude-desktop" => brand_image("claude", Some(CLAUDE_ORANGE)),
         "cursor" => brand_image("cursor", None),
+        "kiro" => brand_image("kiro", None),
         "mcp" => brand_image("modelcontextprotocol", None),
         _ => None,
     };
-    brand.unwrap_or_else(|| gtk::Image::from_icon_name(if id == "codex" { "utilities-terminal-symbolic" } else { "text-x-generic-symbolic" }))
+    brand.unwrap_or_else(|| gtk::Image::from_icon_name(if id == "codex" { "utilities-terminal-symbolic" } else if id == "antigravity" { "system-search-symbolic" } else { "text-x-generic-symbolic" }))
 }
 
 /// First icon name the current theme has (icon names differ between themes).
