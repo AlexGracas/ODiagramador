@@ -205,6 +205,7 @@ impl Server {
                 {"uriTemplate": "diagram://{path}", "name": "Diagram source", "mimeType": "text/vnd.mermaid"},
                 {"uriTemplate": "diagram://{path}#report", "name": "Last validation report", "mimeType": "application/json"},
                 {"uriTemplate": "diagram://{path}#preview", "name": "Annotated PNG preview", "mimeType": "image/png"},
+                {"uriTemplate": "project://{name}", "name": "Project diagrams", "mimeType": "application/json"},
             ]})),
             "resources/read" => {
                 let uri = params.get("uri").and_then(Value::as_str).unwrap_or("");
@@ -256,7 +257,23 @@ impl Server {
                 if self.ws.exists(&path) && !b("overwrite", false) {
                     return Err(ToolError(format!("{path} already exists; use update_diagram or overwrite=true")));
                 }
-                self.save_and_report(&path, source, args)
+                let existing_fm = odg_core::source::parse_front_matter(source);
+                let project = s("project").map(str::to_string).or(existing_fm.project);
+                let project = match project {
+                    Some(p) if !p.trim().is_empty() => p.trim().to_string(),
+                    _ => return Err(ToolError("`project` is required when creating a diagram (pass argument `project` or include it in frontmatter)".into())),
+                };
+                let title = s("title").map(str::to_string).or(existing_fm.title);
+                let description = s("description").map(str::to_string).or(existing_fm.description);
+                let updated_source = odg_core::source::update_front_matter(
+                    source,
+                    &odg_core::source::DiagramFrontMatter {
+                        title,
+                        description,
+                        project: Some(project),
+                    },
+                );
+                self.save_and_report(&path, &updated_source, args)
             }
             "update_diagram" => {
                 let path = s("path").ok_or(ToolError("`path` is required".into()))?;
@@ -380,9 +397,56 @@ impl Server {
                     };
                     let fb = if d.open_feedback > 0 { format!(" · 💬 {} open comment(s)", d.open_feedback) } else { String::new() };
                     let kind = d.kind.as_deref().map(|k| format!(" ({k})")).unwrap_or_default();
-                    text.push_str(&format!("- {}{kind} — {st}{fb}\n", d.path));
+                    let proj = d.project.as_deref().map(|p| format!(" [{p}]")).unwrap_or_default();
+                    let tit = d.title.as_deref().map(|t| format!(" \"{t}\"")).unwrap_or_default();
+                    text.push_str(&format!("- {}{proj}{tit}{kind} — {st}{fb}\n", d.path));
                 }
                 Ok(json!({"content": [{"type": "text", "text": text}], "structuredContent": {"diagrams": list}}))
+            }
+            "list_projects" => {
+                let projects = self.ws.projects()?;
+                let active = self.active_project();
+                let mut text = format!("{} project(s) in {}\n", projects.len(), self.ws.root().display());
+                if let Some(act) = &active {
+                    text.push_str(&format!("Active project in viewer: {act}\n"));
+                }
+                for p in &projects {
+                    let name = if p.name.is_empty() { "(no project)" } else { &p.name };
+                    text.push_str(&format!("- {} ({} diagram(s))\n", name, p.diagram_count));
+                    for diag in &p.diagrams {
+                        text.push_str(&format!("    • {diag}\n"));
+                    }
+                }
+                Ok(json!({
+                    "content": [{"type": "text", "text": text}],
+                    "structuredContent": {
+                        "projects": projects,
+                        "active_project": active,
+                    }
+                }))
+            }
+            "set_diagram_properties" => {
+                let path = s("path").ok_or(ToolError("`path` is required".into()))?;
+                let rel = self.ws.rel(path)?;
+                if !self.ws.exists(&rel) {
+                    return Err(ToolError(format!("{rel} does not exist")));
+                }
+                let source = self.ws.read(&rel)?;
+                let mut fm = odg_core::source::parse_front_matter(&source);
+                if let Some(p) = s("project") {
+                    if p.trim().is_empty() {
+                        return Err(ToolError("`project` cannot be empty".into()));
+                    }
+                    fm.project = Some(p.trim().to_string());
+                }
+                if let Some(t) = s("title") {
+                    fm.title = if t.trim().is_empty() { None } else { Some(t.trim().to_string()) };
+                }
+                if let Some(d) = s("description") {
+                    fm.description = if d.trim().is_empty() { None } else { Some(d.trim().to_string()) };
+                }
+                let new_source = odg_core::source::update_front_matter(&source, &fm);
+                self.save_and_report(&rel, &new_source, args)
             }
             "get_diagram" => {
                 let path = s("path").ok_or(ToolError("`path` is required".into()))?;
@@ -787,10 +851,36 @@ impl Server {
         json!({"content": content, "structuredContent": r, "isError": false})
     }
 
+    fn active_project(&self) -> Option<String> {
+        let presence = self.ws.presence()?;
+        let p = presence.path?;
+        let list = self.ws.list().ok()?;
+        list.into_iter().find(|d| d.path == p).and_then(|d| d.project)
+    }
+
     fn resources(&self) -> ToolResult {
         let mut out = vec![];
+        out.push(json!({
+            "uri": "projects://list",
+            "name": "Projects list",
+            "description": "List of projects and their diagrams in the workspace",
+            "mimeType": "application/json"
+        }));
+        out.push(json!({
+            "uri": "projects://current",
+            "name": "Current project",
+            "description": "The project of the diagram currently open in the viewer",
+            "mimeType": "application/json"
+        }));
         for d in self.ws.list()? {
-            out.push(json!({"uri": format!("diagram://{}", d.path), "name": d.path, "title": d.name, "mimeType": "text/vnd.mermaid"}));
+            let mut item = json!({"uri": format!("diagram://{}", d.path), "name": d.path, "title": d.title.as_deref().unwrap_or(&d.name), "mimeType": "text/vnd.mermaid"});
+            if let Some(p) = &d.project {
+                item["project"] = json!(p);
+            }
+            if let Some(desc) = &d.description {
+                item["description"] = json!(desc);
+            }
+            out.push(item);
             if d.status.is_some() {
                 out.push(json!({"uri": format!("diagram://{}#report", d.path), "name": format!("{} (report)", d.path), "mimeType": "application/json"}));
                 out.push(json!({"uri": format!("diagram://{}#preview", d.path), "name": format!("{} (preview)", d.path), "mimeType": "image/png"}));
@@ -800,6 +890,39 @@ impl Server {
     }
 
     fn read_resource(&self, uri: &str) -> ToolResult {
+        if uri == "projects://list" {
+            let projects = self.ws.projects()?;
+            let active = self.active_project();
+            return Ok(json!({
+                "uri": uri,
+                "mimeType": "application/json",
+                "text": serde_json::to_string_pretty(&json!({
+                    "projects": projects,
+                    "active_project": active,
+                }))?
+            }));
+        }
+        if uri == "projects://current" {
+            let active = self.active_project();
+            let presence = self.ws.presence();
+            return Ok(json!({
+                "uri": uri,
+                "mimeType": "application/json",
+                "text": serde_json::to_string_pretty(&json!({
+                    "active_project": active,
+                    "open_diagram": presence.and_then(|p| p.path),
+                }))?
+            }));
+        }
+        if let Some(proj_name) = uri.strip_prefix("project://") {
+            let list = self.ws.list()?;
+            let matched: Vec<odg_core::workspace::DiagramInfo> = list.into_iter().filter(|d| d.project.as_deref() == Some(proj_name)).collect();
+            return Ok(json!({
+                "uri": uri,
+                "mimeType": "application/json",
+                "text": serde_json::to_string_pretty(&matched)?
+            }));
+        }
         let rest = uri.strip_prefix("diagram://").ok_or(ToolError(format!("unknown resource {uri}")))?;
         let (path, frag) = rest.split_once('#').unwrap_or((rest, ""));
         let rel = self.ws.rel(path)?;
@@ -1040,12 +1163,23 @@ fn tool_definitions() -> Value {
     let write = json!({"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false});
     json!([
         {"name": "create_diagram", "title": "Create diagram",
-         "description": "Create a Mermaid diagram file in the workspace, validate and render it. Returns the problem report and an image (numbered markers = problems).",
+         "description": "Create a Mermaid diagram file in the workspace, validate and render it. Returns the problem report and an image (numbered markers = problems). Requires a project.",
          "inputSchema": with(json!({
             "name": {"type": "string", "description": "Short name; saved as diagrams/<name>.mmd"},
             "path": {"type": "string", "description": "Explicit workspace-relative path (.mmd). Overrides name."},
             "source": {"type": "string", "description": "Mermaid source"},
+            "project": {"type": "string", "description": "Project name (required if not present in frontmatter)"},
+            "title": {"type": "string", "description": "Diagram title (stored in YAML frontmatter)"},
+            "description": {"type": "string", "description": "Diagram description (stored in YAML frontmatter)"},
             "overwrite": {"type": "boolean"}}), &["source"]),
+         "annotations": write},
+        {"name": "set_diagram_properties", "title": "Set diagram properties",
+         "description": "Update frontmatter properties (project, title, description) of a diagram.",
+         "inputSchema": with(json!({
+            "path": {"type": "string", "description": "Diagram path"},
+            "project": {"type": "string", "description": "Project name (cannot be empty)"},
+            "title": {"type": "string", "description": "Diagram title"},
+            "description": {"type": "string", "description": "Diagram description"}}), &["path"]),
          "annotations": write},
         {"name": "update_diagram", "title": "Replace diagram",
          "description": "Replace the whole source of an existing diagram, then validate and render it.",
@@ -1093,6 +1227,9 @@ fn tool_definitions() -> Value {
          "annotations": ro},
         {"name": "list_diagrams", "title": "List diagrams",
          "description": "List diagrams in the workspace with their validation status and open human comments.",
+         "inputSchema": {"type": "object", "properties": {}}, "annotations": ro},
+        {"name": "list_projects", "title": "List projects",
+         "description": "List projects in the workspace, their diagrams, and active project in the viewer.",
          "inputSchema": {"type": "object", "properties": {}}, "annotations": ro},
         {"name": "get_diagram", "title": "Read diagram",
          "description": "Read a diagram's numbered source, its last report and open human comments.",

@@ -132,7 +132,45 @@ pub fn invoke(method: &str, a: &Value) -> R {
             let params = a.get("params").cloned().unwrap_or(json!({}));
             Ok(Value::String(odg_core::edit::apply(arg(a, "source")?, arg(a, "action")?, &params)?))
         }
-        "template" => Ok(json!(odg_core::construct::template(arg(a, "kind")?, lang(a)))),
+        "template" => {
+            let base = odg_core::construct::template(arg(a, "kind")?, lang(a));
+            if let Some(src) = base {
+                let proj = opt(a, "project");
+                let tit = opt(a, "title");
+                let desc = opt(a, "description");
+                if proj.is_some() || tit.is_some() || desc.is_some() {
+                    let fm = odg_core::source::DiagramFrontMatter {
+                        title: tit.map(str::to_string),
+                        description: desc.map(str::to_string),
+                        project: proj.map(str::to_string),
+                    };
+                    Ok(json!(odg_core::source::update_front_matter(&src, &fm)))
+                } else {
+                    Ok(json!(src))
+                }
+            } else {
+                Ok(Value::Null)
+            }
+        }
+        "update_properties" => {
+            let w = ws(a)?;
+            let rel = w.rel(arg(a, "path")?).map_err(|e| e.to_string())?;
+            let src = w.read(&rel).map_err(|e| e.to_string())?;
+            let mut fm = odg_core::source::parse_front_matter(&src);
+            if let Some(p) = opt(a, "project") {
+                fm.project = Some(p.to_string());
+            }
+            if let Some(t) = opt(a, "title") {
+                fm.title = if t.trim().is_empty() { None } else { Some(t.to_string()) };
+            }
+            if let Some(d) = opt(a, "description") {
+                fm.description = if d.trim().is_empty() { None } else { Some(d.to_string()) };
+            }
+            let updated = odg_core::source::update_front_matter(&src, &fm);
+            let out_rel = w.write(&rel, &updated, actor(a), opt(a, "client")).map_err(|e| e.to_string())?;
+            Ok(Value::String(out_rel))
+        }
+        "projects" => to_value(ws(a)?.projects().map_err(|e| e.to_string())?),
         "diagram_kinds" => to_value(odg_core::kinds::list(lang(a))),
         "syntax_help" => Ok(json!(syntax::help(opt(a, "topic").unwrap_or("overview")))),
         // each entry also carries `kind_label`, the diagram type in the UI language

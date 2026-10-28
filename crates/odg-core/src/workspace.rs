@@ -72,11 +72,26 @@ pub struct DiagramInfo {
     /// Diagram type declared in the header (`flowchart`, `sequence`… see `kinds`), if recognised.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub size: u64,
     pub modified: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<DiagramStatus>,
     pub open_feedback: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectSummary {
+    pub name: String,
+    pub diagram_count: usize,
+    pub diagrams: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_modified: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -227,11 +242,16 @@ impl Workspace {
                     .map(|m| time::OffsetDateTime::from(m).format(&time::format_description::well_known::Rfc3339).unwrap_or_default())
                     .unwrap_or_default();
                 let status = self.status(&rel);
-                let kind = fs::read_to_string(&abs).ok().and_then(|src| crate::kinds::detect(&src)).map(|k| k.id.to_string());
+                let src_opt = fs::read_to_string(&abs).ok();
+                let kind = src_opt.as_deref().and_then(crate::kinds::detect).map(|k| k.id.to_string());
+                let fm = src_opt.as_deref().map(crate::source::parse_front_matter).unwrap_or_default();
                 Some(DiagramInfo {
                     name: abs.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
                     engine: engine.id().to_string(),
                     kind,
+                    project: fm.project,
+                    title: fm.title,
+                    description: fm.description,
                     size: meta.len(),
                     modified,
                     status,
@@ -241,6 +261,27 @@ impl Workspace {
             })
             .collect();
         out.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(out)
+    }
+
+    pub fn projects(&self) -> WsResult<Vec<ProjectSummary>> {
+        let list = self.list()?;
+        let mut map: std::collections::BTreeMap<Option<String>, Vec<DiagramInfo>> = std::collections::BTreeMap::new();
+        for d in list {
+            map.entry(d.project.clone()).or_default().push(d);
+        }
+        let mut out = vec![];
+        for (project_opt, diagrams) in map {
+            let count = diagrams.len();
+            let last_modified = diagrams.iter().map(|d| &d.modified).filter(|m| !m.is_empty()).max().cloned();
+            let paths = diagrams.into_iter().map(|d| d.path).collect();
+            out.push(ProjectSummary {
+                name: project_opt.unwrap_or_else(|| "".to_string()),
+                diagram_count: count,
+                diagrams: paths,
+                last_modified,
+            });
+        }
         Ok(out)
     }
 
@@ -518,5 +559,44 @@ mod tests {
         ws.resolve_feedback(&fb.id, Some("done"), Actor::Agent).unwrap();
         assert!(ws.feedback(None, false).unwrap().is_empty());
         assert_eq!(ws.feedback(None, true).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn project_frontmatter_and_grouping() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(dir.path()).unwrap();
+
+        let src1 = "---\ntitle: Diagram A\ndescription: Desc A\nproject: ProjAlpha\n---\nflowchart LR\n A --> B\n";
+        let src2 = "---\ntitle: Diagram B\nproject: ProjAlpha\n---\nflowchart LR\n B --> C\n";
+        let src3 = "---\nproject: ProjBeta\n---\nflowchart LR\n X --> Y\n";
+        let src4 = "flowchart LR\n Z --> W\n"; // no frontmatter / default
+
+        ws.write("diagrams/a.mmd", src1, Actor::Human, None).unwrap();
+        ws.write("diagrams/b.mmd", src2, Actor::Human, None).unwrap();
+        ws.write("diagrams/c.mmd", src3, Actor::Human, None).unwrap();
+        ws.write("diagrams/d.mmd", src4, Actor::Human, None).unwrap();
+
+        let list = ws.list().unwrap();
+        assert_eq!(list.len(), 4);
+
+        let diag_a = list.iter().find(|d| d.path == "diagrams/a.mmd").unwrap();
+        assert_eq!(diag_a.title.as_deref(), Some("Diagram A"));
+        assert_eq!(diag_a.description.as_deref(), Some("Desc A"));
+        assert_eq!(diag_a.project.as_deref(), Some("ProjAlpha"));
+
+        let diag_d = list.iter().find(|d| d.path == "diagrams/d.mmd").unwrap();
+        assert_eq!(diag_d.project, None);
+        assert_eq!(diag_d.title, None);
+
+        let projects = ws.projects().unwrap();
+        // Should have 3 projects: "", "ProjAlpha", "ProjBeta"
+        assert_eq!(projects.len(), 3);
+        let alpha = projects.iter().find(|p| p.name == "ProjAlpha").unwrap();
+        assert_eq!(alpha.diagram_count, 2);
+        assert_eq!(alpha.diagrams, vec!["diagrams/a.mmd", "diagrams/b.mmd"]);
+
+        let beta = projects.iter().find(|p| p.name == "ProjBeta").unwrap();
+        assert_eq!(beta.diagram_count, 1);
+        assert_eq!(beta.diagrams, vec!["diagrams/c.mmd"]);
     }
 }

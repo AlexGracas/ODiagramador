@@ -123,6 +123,9 @@ struct DiagramInfo: Codable, Hashable, Identifiable {
     var engine: String
     var kind: String?
     var kindLabel: String?
+    var project: String?
+    var title: String?
+    var description: String?
     var size: Int
     var modified: String
     var status: DiagramStatus?

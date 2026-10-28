@@ -334,19 +334,36 @@ final class AppState: ObservableObject {
         (try? Core.call("diagram_kinds", ["lang": lang], as: [DiagramKind].self)) ?? [DiagramKind(kind: "flowchart", label: "Flowchart", graph: true)]
     }
 
-    func createDiagram(named name: String, kind: String = "flowchart") {
+    func createDiagram(named name: String, kind: String = "flowchart", project: String = "default", title: String? = nil, description: String? = nil) {
         guard let ws = workspace else { return }
         let slug = name.lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
             .joined(separator: "-")
         let path = "diagrams/\(slug.isEmpty ? "diagram" : slug).mmd"
-        let template = (try? Core.call("template", ["kind": kind, "lang": lang], as: String.self))
+        var params: [String: Any] = ["kind": kind, "lang": lang, "project": project]
+        if let t = title, !t.isEmpty { params["title"] = t }
+        if let d = description, !d.isEmpty { params["description"] = d }
+        let template = (try? Core.call("template", params, as: String.self))
             ?? "flowchart LR\n    start([Start]) --> done([Done])\n"
         do {
             let rel = try Core.call("write", ["workspace": ws.path, "path": path, "content": template, "actor": "human"], as: String.self)
             refreshList()
             select(rel)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func updateProperties(path: String, project: String, title: String?, description: String?) {
+        guard let ws = workspace else { return }
+        var params: [String: Any] = ["workspace": ws.path, "path": path, "project": project, "actor": "human"]
+        if let t = title { params["title"] = t }
+        if let d = description { params["description"] = d }
+        do {
+            let _ = try Core.call("update_properties", params, as: String.self)
+            refreshList()
+            select(path)
         } catch {
             errorMessage = error.localizedDescription
         }

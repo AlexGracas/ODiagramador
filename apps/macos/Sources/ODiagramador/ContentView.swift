@@ -88,6 +88,10 @@ struct Sidebar: View {
 
     private var groups: [Group] {
         switch group {
+        case "project":
+            return Dictionary(grouping: state.diagrams) { $0.project?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? $0.project! : state.t("ui-no-project") }
+                .sorted { $0.key.localizedStandardCompare($1.key) == .orderedAscending }
+                .map { Group(id: "p:" + $0.key, title: $0.key, items: sorted($0.value)) }
         case "kind":
             return Dictionary(grouping: state.diagrams) { $0.kindLabel ?? state.t("ui-kind-unknown") }
                 .sorted { $0.key.localizedStandardCompare($1.key) == .orderedAscending }
@@ -123,6 +127,7 @@ struct Sidebar: View {
             HStack {
                 Menu {
                     Picker(state.t("ui-group-by"), selection: $group) {
+                        Text(state.t("ui-group-project")).tag("project")
                         Text(state.t("ui-group-none")).tag("none")
                         Text(state.t("ui-group-kind")).tag("kind")
                         Text(state.t("ui-group-folder")).tag("folder")
@@ -134,7 +139,7 @@ struct Sidebar: View {
                     }
                     .pickerStyle(.inline)
                 } label: {
-                    Label(state.t(["kind": "ui-group-kind", "folder": "ui-group-folder"][group] ?? "ui-group-none")
+                    Label(state.t(["project": "ui-group-project", "kind": "ui-group-kind", "folder": "ui-group-folder"][group] ?? "ui-group-none")
                           + " · " + state.t(sort == "date" ? "ui-sort-date" : "ui-sort-name"),
                           systemImage: "line.3.horizontal.decrease.circle")
                 }
@@ -175,11 +180,29 @@ struct DiagramRow: View {
     let showKind: Bool
     let showFolder: Bool
 
+    private var shortDate: String {
+        if d.modified.count >= 10 {
+            let m = d.modified
+            let startMonth = m.index(m.startIndex, offsetBy: 5)
+            let endMonth = m.index(m.startIndex, offsetBy: 7)
+            let startDay = m.index(m.startIndex, offsetBy: 8)
+            let endDay = m.index(m.startIndex, offsetBy: 10)
+            return "\(m[startDay..<endDay])/\(m[startMonth..<endMonth])"
+        }
+        return ""
+    }
+
     var body: some View {
         HStack(spacing: 8) {
+            if !shortDate.isEmpty {
+                Text(shortDate)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
             StatusIcon(status: d.status)
             VStack(alignment: .leading, spacing: 2) {
-                Text(d.name).lineLimit(1)
+                Text(d.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? d.title! : d.name).lineLimit(1)
                 HStack(spacing: 5) {
                     if showKind, let k = d.kindLabel { KindTag(kind: d.kind ?? "", label: k) }
                     if showFolder && !d.folder.isEmpty {
@@ -195,7 +218,7 @@ struct DiagramRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .help(d.kindLabel.map { "\(d.path) · \($0)" } ?? d.path)
+        .help(d.description?.isEmpty == false ? "\(d.path)\n\n\(d.description!)" : (d.kindLabel.map { "\(d.path) · \($0)" } ?? d.path))
     }
 }
 
@@ -603,6 +626,9 @@ struct NewDiagramSheet: View {
     @EnvironmentObject var state: AppState
     @Binding var isPresented: Bool
     @State private var name = ""
+    @State private var project = ""
+    @State private var title = ""
+    @State private var description = ""
     @State private var kind = "flowchart"
 
     var body: some View {
@@ -613,20 +639,30 @@ struct NewDiagramSheet: View {
                     Text(k.label).tag(k.kind)
                 }
             }
+            TextField(state.t("ui-diagram-project"), text: $project)
             TextField(state.t("ui-new-diagram-name"), text: $name).onSubmit(create)
+            TextField(state.t("ui-diagram-title"), text: $title)
+            TextField(state.t("ui-diagram-description"), text: $description)
             HStack {
                 Spacer()
                 Button(state.t("ui-cancel")) { isPresented = false }.keyboardShortcut(.cancelAction)
-                Button(state.t("ui-create"), action: create).keyboardShortcut(.defaultAction).disabled(name.isEmpty)
+                Button(state.t("ui-create"), action: create)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(name.isEmpty || project.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding()
         .frame(width: 360)
+        .onAppear {
+            if project.isEmpty {
+                project = state.selectedDiagram?.project ?? "default"
+            }
+        }
     }
 
     private func create() {
-        guard !name.isEmpty else { return }
-        state.createDiagram(named: name, kind: kind)
+        guard !name.isEmpty, !project.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        state.createDiagram(named: name, kind: kind, project: project, title: title.isEmpty ? nil : title, description: description.isEmpty ? nil : description)
         isPresented = false
     }
 }

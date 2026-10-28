@@ -110,14 +110,18 @@ public record Report(string? Path, string? DiagramType, bool Valid, int ErrorCou
 public record DiagramStatus(bool Valid, int Errors, int Warnings, bool Stale, string Summary);
 
 public record DiagramInfo(string Path, string Name, string Engine, long Size, string Modified, DiagramStatus? Status, int OpenFeedback,
-    string? Kind = null, string? KindLabel = null)
+    string? Kind = null, string? KindLabel = null, string? Project = null, string? Title = null, string? Description = null)
 {
     public string Glyph => Status is null ? "○" : !Status.Valid ? "⛔" : Status.Warnings > 0 ? "⚠" : "✔";
     public string Badge => OpenFeedback > 0 ? $"💬 {OpenFeedback}" : "";
+    public string ShortDate => Modified.Length >= 10 ? $"{Modified[8..10]}/{Modified[5..7]}" : "";
+    public string DisplayTitle => !string.IsNullOrWhiteSpace(Title) ? Title : Name;
+    public string TooltipText => !string.IsNullOrWhiteSpace(Description) ? $"{Path}\n\n{Description}" : Path;
     /// Folder inside the workspace ("" = root).
     public string Folder => Path.Contains('/') ? Path[..Path.LastIndexOf('/')] : "";
     public string FolderText => Folder.Length > 0 ? Folder + "/" : "";
     /// Group titles, filled by the window (they depend on the UI language).
+    public string ProjectGroup { get; set; } = "";
     public string KindGroup { get; set; } = "";
     public string FolderGroup { get; set; } = "";
     public System.Windows.Visibility KindVisibility => KindLabel is null ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;

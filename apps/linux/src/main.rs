@@ -114,6 +114,7 @@ struct Ui {
     agent_badge: gtk::Label,
     open_button: gtk::Button,
     new_button: gtk::Button,
+    properties_button: gtk::Button,
     export_button: gtk::MenuButton,
     mcp_button: gtk::MenuButton,
     update_button: gtk::Button,
@@ -325,6 +326,7 @@ fn build_ui(app: &adw::Application, args: &[String]) {
     let header = adw::HeaderBar::builder().title_widget(&title).build();
     let open_button = gtk::Button::from_icon_name("folder-open-symbolic");
     let new_button = gtk::Button::from_icon_name("document-new-symbolic");
+    let properties_button = gtk::Button::builder().icon_name("document-properties-symbolic").sensitive(false).build();
     let export_button = gtk::MenuButton::builder()
         .icon_name(themed_icon(&["document-export-symbolic", "document-send-symbolic", "document-save-as-symbolic"]))
         .build();
@@ -333,6 +335,7 @@ fn build_ui(app: &adw::Application, args: &[String]) {
     let settings_button = gtk::Button::from_icon_name("emblem-system-symbolic");
     header.pack_start(&open_button);
     header.pack_start(&new_button);
+    header.pack_start(&properties_button);
     header.pack_start(&export_button);
     header.pack_end(&settings_button);
     header.pack_end(&update_button);
@@ -489,6 +492,7 @@ fn build_ui(app: &adw::Application, args: &[String]) {
         agent_badge,
         open_button,
         new_button,
+        properties_button,
         export_button,
         mcp_button,
         update_button,
@@ -565,6 +569,7 @@ fn apply_strings(ui: &Ui) {
     let s = ui.state.borrow();
     ui.open_button.set_tooltip_text(Some(&s.t("ui-open-folder")));
     ui.new_button.set_tooltip_text(Some(&s.t("ui-new-diagram")));
+    ui.properties_button.set_tooltip_text(Some(&s.t("ui-properties")));
     ui.export_button.set_tooltip_text(Some(&s.t("ui-export")));
     ui.mcp_button.set_tooltip_text(Some(&s.t("ui-mcp-configure")));
     ui.settings_button.set_tooltip_text(Some(&s.t("ui-settings")));
@@ -604,7 +609,7 @@ fn apply_strings(ui: &Ui) {
     mcp.push(MenuEntry::new(gtk::Image::from_icon_name("emblem-system-symbolic"), s.t("ui-mcp-settings"), move || settings::show_preferences(&u, "mcp")));
     ui.mcp_button.set_popover(Some(&icon_popover(mcp)));
     let (group_labels, sort_labels) = (
-        ["ui-group-none", "ui-group-kind", "ui-group-folder"].map(|k| s.t(k)),
+        ["ui-group-project", "ui-group-none", "ui-group-kind", "ui-group-folder"].map(|k| s.t(k)),
         ["ui-sort-name", "ui-sort-date"].map(|k| s.t(k)),
     );
     let (group, sort) = (s.prefs.list_group.clone(), s.prefs.list_sort.clone());
@@ -632,7 +637,7 @@ fn apply_strings(ui: &Ui) {
     send(ui, json!({"op": "strings", "strings": all}));
 }
 
-const LIST_GROUPS: [&str; 3] = ["none", "kind", "folder"];
+const LIST_GROUPS: [&str; 4] = ["project", "none", "kind", "folder"];
 
 // ------------------------------------------------------------------ wiring
 
@@ -708,6 +713,9 @@ fn wire(ui: &Ui, ucm: &webkit::UserContentManager) {
 
     let u = ui.clone();
     ui.new_button.connect_clicked(move |_| new_diagram_dialog(&u));
+
+    let u = ui.clone();
+    ui.properties_button.connect_clicked(move |_| show_properties_dialog(&u));
 
     let u = ui.clone();
     let add = move || {
@@ -1124,11 +1132,29 @@ fn open_workspace(ui: &Ui, dir: PathBuf) {
     select(ui, first);
 }
 
+fn format_short_date(rfc3339: &str) -> String {
+    if rfc3339.len() >= 10 && rfc3339.chars().nth(4) == Some('-') && rfc3339.chars().nth(7) == Some('-') {
+        let month = &rfc3339[5..7];
+        let day = &rfc3339[8..10];
+        format!("{day}/{month}")
+    } else {
+        String::new()
+    }
+}
+
 fn refresh_list(ui: &Ui) {
-    let (list, lang, group, sort, unknown, root) = {
+    let (list, lang, group, sort, unknown, root, no_project) = {
         let s = ui.state.borrow();
         let Some(ws) = &s.ws else { return };
-        (ws.list().unwrap_or_default(), s.lang, s.prefs.list_group.clone(), s.prefs.list_sort.clone(), s.t("ui-kind-unknown"), s.t("ui-root-folder"))
+        (
+            ws.list().unwrap_or_default(),
+            s.lang,
+            s.prefs.list_group.clone(),
+            s.prefs.list_sort.clone(),
+            s.t("ui-kind-unknown"),
+            s.t("ui-root-folder"),
+            s.t("ui-no-project"),
+        )
     };
     while let Some(child) = ui.list.first_child() {
         ui.list.remove(&child);
@@ -1136,6 +1162,7 @@ fn refresh_list(ui: &Ui) {
     let kind_label = |d: &odg_core::workspace::DiagramInfo| d.kind.as_deref().and_then(odg_core::kinds::find).map(|k| k.label(lang));
     let folder = |d: &odg_core::workspace::DiagramInfo| d.path.rfind('/').map(|i| d.path[..i].to_string()).unwrap_or_default();
     let group_of = |d: &odg_core::workspace::DiagramInfo| match group.as_str() {
+        "project" => Some(d.project.as_deref().filter(|p| !p.trim().is_empty()).map(str::to_string).unwrap_or_else(|| no_project.clone())),
         "kind" => Some(kind_label(d).map(str::to_string).unwrap_or_else(|| unknown.clone())),
         "folder" => Some(Some(folder(d)).filter(|f| !f.is_empty()).map(|f| f + "/").unwrap_or_else(|| root.clone())),
         _ => None,
@@ -1170,10 +1197,41 @@ fn refresh_list(ui: &Ui) {
             }
             subtitle.push_str(&glib::markup_escape_text(&format!("{f}/")));
         }
-        let row = adw::ActionRow::builder().title(glib::markup_escape_text(&d.name).as_str()).subtitle(subtitle.as_str()).tooltip_text(d.path.as_str()).build();
+        if group != "project" {
+            if let Some(proj) = &d.project {
+                if !proj.is_empty() {
+                    if !subtitle.is_empty() {
+                        subtitle.push_str("  ·  ");
+                    }
+                    subtitle.push_str(&glib::markup_escape_text(proj));
+                }
+            }
+        }
+        let display_title = d.title.as_deref().filter(|t| !t.trim().is_empty()).unwrap_or(&d.name);
+        let mut tooltip = d.path.clone();
+        if let Some(desc) = &d.description {
+            if !desc.trim().is_empty() {
+                tooltip.push_str("\n\n");
+                tooltip.push_str(desc.trim());
+            }
+        }
+        if !d.modified.is_empty() {
+            tooltip.push_str("\n\n");
+            tooltip.push_str(&d.modified);
+        }
+        let row = adw::ActionRow::builder().title(glib::markup_escape_text(display_title).as_str()).subtitle(subtitle.as_str()).tooltip_text(tooltip.as_str()).build();
         let icon = gtk::Image::from_icon_name(status_icon(d.status.as_ref().map(|s| (s.valid, s.warnings))));
         icon.set_widget_name("status");
-        row.add_prefix(&icon);
+
+        let prefix_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(6).build();
+        let short_date = format_short_date(&d.modified);
+        if !short_date.is_empty() {
+            let date_lbl = gtk::Label::builder().label(short_date).css_classes(["caption", "dim-label"]).valign(gtk::Align::Center).build();
+            prefix_box.append(&date_lbl);
+        }
+        prefix_box.append(&icon);
+        row.add_prefix(&prefix_box);
+
         if d.open_feedback > 0 {
             row.add_suffix(&gtk::Label::builder().label(format!("💬 {}", d.open_feedback)).css_classes(["caption"]).build());
         }
@@ -1298,6 +1356,7 @@ fn fill_activity(ui: &Ui, events: &[Event]) {
 
 fn select(ui: &Ui, path: Option<String>) {
     flush_save(ui);
+    ui.properties_button.set_sensitive(path.is_some());
     let Some(path) = path else { return };
     let text = {
         let s = ui.state.borrow();
@@ -1396,32 +1455,140 @@ fn poll(ui: &Ui) {
     }
 }
 
-fn new_diagram_dialog(ui: &Ui) {
-    let s = ui.state.borrow();
-    if s.ws.is_none() {
-        return;
+fn show_properties_dialog(ui: &Ui) {
+    let (sel, src, lang) = {
+        let s = ui.state.borrow();
+        let Some(ws) = &s.ws else { return };
+        let Some(sel) = &s.selected else { return };
+        let src = ws.read(sel).unwrap_or_default();
+        (sel.clone(), src, s.lang)
+    };
+    let fm = odg_core::source::parse_front_matter(&src);
+
+    let dialog = adw::MessageDialog::new(Some(&ui.window), Some(&i18n::t(lang, "ui-properties", &[])), None);
+    let box_content = gtk::Box::new(gtk::Orientation::Vertical, 8);
+
+    // Project entry (Required)
+    box_content.append(&gtk::Label::builder().label(i18n::t(lang, "ui-diagram-project", &[])).xalign(0.0).build());
+    let proj_entry = gtk::Entry::builder().text(fm.project.as_deref().unwrap_or("")).placeholder_text(i18n::t(lang, "ui-new-diagram-project-placeholder", &[])).build();
+    box_content.append(&proj_entry);
+
+    // Title entry (Optional)
+    box_content.append(&gtk::Label::builder().label(i18n::t(lang, "ui-diagram-title", &[])).xalign(0.0).build());
+    let title_entry = gtk::Entry::builder().text(fm.title.as_deref().unwrap_or("")).build();
+    box_content.append(&title_entry);
+
+    // Description entry (Optional)
+    box_content.append(&gtk::Label::builder().label(i18n::t(lang, "ui-diagram-description", &[])).xalign(0.0).build());
+    let desc_buffer = gtk::TextBuffer::new(None);
+    if let Some(desc) = &fm.description {
+        desc_buffer.set_text(desc);
     }
-    let dialog = adw::MessageDialog::new(Some(&ui.window), Some(&s.t("ui-new-diagram")), None);
-    let entry = gtk::Entry::builder().placeholder_text(s.t("ui-new-diagram-name")).activates_default(true).build();
-    // every Mermaid diagram type, labelled in the current language
-    let kind_list = odg_core::kinds::list(s.lang);
+    let desc_view = gtk::TextView::builder().buffer(&desc_buffer).wrap_mode(gtk::WrapMode::Word).height_request(80).build();
+    let desc_scroll = gtk::ScrolledWindow::builder().child(&desc_view).height_request(80).build();
+    box_content.append(&desc_scroll);
+
+    dialog.set_extra_child(Some(&box_content));
+    dialog.add_response("cancel", &i18n::t(lang, "ui-cancel", &[]));
+    dialog.add_response("save", &i18n::t(lang, "ui-save", &[]));
+    dialog.set_default_response(Some("save"));
+    dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
+
+    let u = ui.clone();
+    dialog.connect_response(None, move |_, response| {
+        if response != "save" {
+            return;
+        }
+        let proj = proj_entry.text().trim().to_string();
+        if proj.is_empty() {
+            return;
+        }
+        let tit = title_entry.text().trim().to_string();
+        let tit_opt = if tit.is_empty() { None } else { Some(tit) };
+        let (start, end) = desc_buffer.bounds();
+        let desc = desc_buffer.text(&start, &end, false).trim().to_string();
+        let desc_opt = if desc.is_empty() { None } else { Some(desc) };
+
+        let updated = {
+            let s = u.state.borrow();
+            let Some(ws) = &s.ws else { return };
+            let current_src = ws.read(&sel).unwrap_or_default();
+            let new_src = odg_core::source::update_front_matter(&current_src, &odg_core::source::DiagramFrontMatter {
+                title: tit_opt,
+                description: desc_opt,
+                project: Some(proj),
+            });
+            ws.write(&sel, &new_src, Actor::Human, None).ok().map(|_| new_src)
+        };
+
+        if let Some(new_src) = updated {
+            u.state.borrow_mut().saved_source = new_src.clone();
+            u.buffer.set_text(&new_src);
+            refresh_list(&u);
+            u.toast.add_toast(adw::Toast::new(&i18n::t(lang, "ui-properties-saved", &[])));
+        }
+    });
+    dialog.present();
+}
+
+fn new_diagram_dialog(ui: &Ui) {
+    let (lang, active_proj) = {
+        let s = ui.state.borrow();
+        if s.ws.is_none() {
+            return;
+        }
+        let active_proj = s.selected.as_ref().and_then(|sel| {
+            s.diagrams.iter().find(|d| &d.path == sel).and_then(|d| d.project.clone())
+        }).unwrap_or_else(|| "default".to_string());
+        (s.lang, active_proj)
+    };
+    let dialog = adw::MessageDialog::new(Some(&ui.window), Some(&i18n::t(lang, "ui-new-diagram", &[])), None);
+    let extra = gtk::Box::new(gtk::Orientation::Vertical, 8);
+
+    // Kind
+    let kind_list = odg_core::kinds::list(lang);
     let kinds: Vec<&str> = kind_list.iter().map(|k| k.kind).collect();
     let labels: Vec<String> = kind_list.iter().map(|k| k.label.to_string()).collect();
     let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
     let kind_drop = gtk::DropDown::from_strings(&label_refs);
-    let extra = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    extra.append(&gtk::Label::builder().label(s.t("ui-new-diagram-type")).xalign(0.0).build());
+    extra.append(&gtk::Label::builder().label(i18n::t(lang, "ui-new-diagram-type", &[])).xalign(0.0).build());
     extra.append(&kind_drop);
+
+    // Project (Required)
+    extra.append(&gtk::Label::builder().label(i18n::t(lang, "ui-diagram-project", &[])).xalign(0.0).build());
+    let proj_entry = gtk::Entry::builder().text(&active_proj).placeholder_text(i18n::t(lang, "ui-new-diagram-project-placeholder", &[])).build();
+    extra.append(&proj_entry);
+
+    // File name (slug)
+    extra.append(&gtk::Label::builder().label(i18n::t(lang, "ui-new-diagram-name", &[])).xalign(0.0).build());
+    let entry = gtk::Entry::builder().placeholder_text("checkout").activates_default(true).build();
     extra.append(&entry);
+
+    // Title (Optional)
+    extra.append(&gtk::Label::builder().label(i18n::t(lang, "ui-diagram-title", &[])).xalign(0.0).build());
+    let title_entry = gtk::Entry::builder().build();
+    extra.append(&title_entry);
+
+    // Description (Optional)
+    extra.append(&gtk::Label::builder().label(i18n::t(lang, "ui-diagram-description", &[])).xalign(0.0).build());
+    let desc_buffer = gtk::TextBuffer::new(None);
+    let desc_view = gtk::TextView::builder().buffer(&desc_buffer).wrap_mode(gtk::WrapMode::Word).height_request(60).build();
+    let desc_scroll = gtk::ScrolledWindow::builder().child(&desc_view).height_request(60).build();
+    extra.append(&desc_scroll);
+
     dialog.set_extra_child(Some(&extra));
-    dialog.add_response("cancel", &s.t("ui-cancel"));
-    dialog.add_response("create", &s.t("ui-create"));
+    dialog.add_response("cancel", &i18n::t(lang, "ui-cancel", &[]));
+    dialog.add_response("create", &i18n::t(lang, "ui-create", &[]));
     dialog.set_default_response(Some("create"));
     dialog.set_response_appearance("create", adw::ResponseAppearance::Suggested);
-    drop(s);
+
     let u = ui.clone();
     dialog.connect_response(None, move |_, response| {
         if response != "create" {
+            return;
+        }
+        let proj = proj_entry.text().trim().to_string();
+        if proj.is_empty() {
             return;
         }
         let name = entry.text().to_string();
@@ -1433,10 +1600,21 @@ fn new_diagram_dialog(ui: &Ui) {
             .join("-");
         let path = format!("diagrams/{}.mmd", if slug.is_empty() { "diagram".into() } else { slug });
         let kind = kinds.get(kind_drop.selected() as usize).copied().unwrap_or("flowchart");
+        let tit = title_entry.text().trim().to_string();
+        let tit_opt = if tit.is_empty() { None } else { Some(tit) };
+        let (start, end) = desc_buffer.bounds();
+        let desc = desc_buffer.text(&start, &end, false).trim().to_string();
+        let desc_opt = if desc.is_empty() { None } else { Some(desc) };
+
         let created = {
             let s = u.state.borrow();
-            let text = odg_core::construct::template(kind, s.lang).unwrap_or_default();
-            s.ws.as_ref().and_then(|ws| ws.write(&path, &text, Actor::Human, None).ok())
+            let template_body = odg_core::construct::template(kind, s.lang).unwrap_or_default();
+            let with_fm = odg_core::source::update_front_matter(&template_body, &odg_core::source::DiagramFrontMatter {
+                title: tit_opt,
+                description: desc_opt,
+                project: Some(proj),
+            });
+            s.ws.as_ref().and_then(|ws| ws.write(&path, &with_fm, Actor::Human, None).ok())
         };
         if let Some(rel) = created {
             refresh_list(&u);

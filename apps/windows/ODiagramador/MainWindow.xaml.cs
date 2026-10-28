@@ -673,10 +673,10 @@ public partial class MainWindow : Window
     private void LocalizeListOptions()
     {
         _listOptionsReady = false;
-        string[] group = { "ui-group-none", "ui-group-kind", "ui-group-folder" }, sort = { "ui-sort-name", "ui-sort-date" };
+        string[] group = { "ui-group-project", "ui-group-none", "ui-group-kind", "ui-group-folder" }, sort = { "ui-sort-name", "ui-sort-date" };
         for (var i = 0; i < group.Length; i++) ((ComboBoxItem)GroupBox.Items[i]).Content = T(group[i]);
         for (var i = 0; i < sort.Length; i++) ((ComboBoxItem)SortBox.Items[i]).Content = T(sort[i]);
-        GroupBox.SelectedIndex = Math.Max(0, Array.IndexOf(new[] { "none", "kind", "folder" }, Prefs.ListGroup));
+        GroupBox.SelectedIndex = Math.Max(0, Array.IndexOf(new[] { "project", "none", "kind", "folder" }, Prefs.ListGroup));
         SortBox.SelectedIndex = Prefs.ListSort == "date" ? 1 : 0;
         GroupBox.ToolTip = T("ui-group-by");
         SortBox.ToolTip = T("ui-sort-by");
@@ -698,6 +698,7 @@ public partial class MainWindow : Window
         if (DiagramList.ItemsSource is not List<DiagramInfo> list) return;
         foreach (var d in list)
         {
+            d.ProjectGroup = !string.IsNullOrWhiteSpace(d.Project) ? d.Project : T("ui-no-project");
             d.KindGroup = d.KindLabel ?? T("ui-kind-unknown");
             d.FolderGroup = d.Folder.Length > 0 ? d.Folder + "/" : T("ui-root-folder");
         }
@@ -706,7 +707,13 @@ public partial class MainWindow : Window
         {
             view.GroupDescriptions.Clear();
             view.SortDescriptions.Clear();
-            var key = Prefs.ListGroup switch { "kind" => nameof(DiagramInfo.KindGroup), "folder" => nameof(DiagramInfo.FolderGroup), _ => null };
+            var key = Prefs.ListGroup switch
+            {
+                "project" => nameof(DiagramInfo.ProjectGroup),
+                "kind" => nameof(DiagramInfo.KindGroup),
+                "folder" => nameof(DiagramInfo.FolderGroup),
+                _ => null
+            };
             if (key is not null)
             {
                 view.GroupDescriptions.Add(new PropertyGroupDescription(key));

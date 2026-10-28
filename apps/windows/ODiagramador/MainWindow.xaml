@@ -131,6 +131,7 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <ComboBox x:Name="GroupBox" Grid.Column="0" FontSize="11" SelectionChanged="OnListOptionsChanged">
+                        <ComboBoxItem Tag="project" />
                         <ComboBoxItem Tag="none" />
                         <ComboBoxItem Tag="kind" />
                         <ComboBoxItem Tag="folder" />
@@ -156,11 +157,12 @@
                     </ListBox.GroupStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <DockPanel Margin="2" ToolTip="{Binding Path}">
-                                <TextBlock DockPanel.Dock="Left" Text="{Binding Glyph}" Width="20" />
+                            <DockPanel Margin="2" ToolTip="{Binding TooltipText}">
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding ShortDate}" Width="35" Foreground="{StaticResource MutedBrush}" FontSize="10.5" VerticalAlignment="Center" />
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding Glyph}" Width="20" VerticalAlignment="Center" />
                                 <TextBlock DockPanel.Dock="Right" Text="{Binding Badge}" Foreground="{StaticResource MutedBrush}" />
                                 <StackPanel>
-                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding DisplayTitle}" TextTrimming="CharacterEllipsis" />
                                     <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
                                         <Border Visibility="{Binding KindVisibility}" Background="{Binding KindBackground}" CornerRadius="7" Padding="5,0" Margin="0,0,5,0">
                                             <TextBlock Text="{Binding KindLabel}" FontSize="10.5" FontWeight="SemiBold" Foreground="{Binding KindColor}" />

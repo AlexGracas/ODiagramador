@@ -18,6 +18,181 @@ pub fn front_matter_lines(source: &str) -> u32 {
     0
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DiagramFrontMatter {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+}
+
+fn unquote(s: &str) -> String {
+    let t = s.trim();
+    if (t.starts_with('"') && t.ends_with('"') && t.len() >= 2)
+        || (t.starts_with('\'') && t.ends_with('\'') && t.len() >= 2)
+    {
+        t[1..t.len() - 1].to_string()
+    } else {
+        t.to_string()
+    }
+}
+
+fn format_yaml_val(val: &str) -> String {
+    let trimmed = val.trim();
+    if trimmed.contains('\n') || trimmed.contains(':') || trimmed.contains('#') || trimmed.starts_with('"') || trimmed.starts_with('\'') {
+        format!("\"{}\"", trimmed.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n"))
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// Parses title, description, and project from a leading YAML front matter block.
+pub fn parse_front_matter(source: &str) -> DiagramFrontMatter {
+    let mut fm = DiagramFrontMatter::default();
+    let count = front_matter_lines(source) as usize;
+    if count < 2 {
+        return fm;
+    }
+    let lines: Vec<&str> = source.lines().take(count).collect();
+    if lines.len() < 2 {
+        return fm;
+    }
+    let body = &lines[1..lines.len() - 1];
+    for line in body {
+        let t = line.trim();
+        if t.starts_with('#') || t.is_empty() {
+            continue;
+        }
+        if let Some((key, val)) = t.split_once(':') {
+            let k = key.trim().to_ascii_lowercase();
+            let v = unquote(val);
+            match k.as_str() {
+                "title" if fm.title.is_none() => fm.title = Some(v),
+                "description" | "desc" if fm.description.is_none() => fm.description = Some(v),
+                "project" if fm.project.is_none() => fm.project = Some(v),
+                _ => {}
+            }
+        }
+    }
+    fm
+}
+
+pub fn get_front_matter_project(source: &str) -> Option<String> {
+    parse_front_matter(source).project
+}
+
+/// Updates or creates the leading YAML front matter with title, description, project.
+pub fn update_front_matter(source: &str, meta: &DiagramFrontMatter) -> String {
+    let count = front_matter_lines(source) as usize;
+    if count == 0 {
+        let mut fm_lines = vec!["---".to_string()];
+        if let Some(p) = &meta.project {
+            if !p.trim().is_empty() {
+                fm_lines.push(format!("project: {}", format_yaml_val(p)));
+            }
+        }
+        if let Some(t) = &meta.title {
+            if !t.trim().is_empty() {
+                fm_lines.push(format!("title: {}", format_yaml_val(t)));
+            }
+        }
+        if let Some(d) = &meta.description {
+            if !d.trim().is_empty() {
+                fm_lines.push(format!("description: {}", format_yaml_val(d)));
+            }
+        }
+        fm_lines.push("---".to_string());
+        let head = fm_lines.join("\n");
+        if source.is_empty() {
+            return format!("{head}\n");
+        } else {
+            return format!("{head}\n{source}");
+        }
+    }
+
+    let all_lines: Vec<&str> = source.lines().collect();
+    let rest = if count < all_lines.len() { &all_lines[count..] } else { &[] };
+    let fm_body = &all_lines[1..count - 1];
+
+    let mut new_fm_lines: Vec<String> = vec![all_lines[0].to_string()];
+    let mut handled_project = false;
+    let mut handled_title = false;
+    let mut handled_desc = false;
+
+    for line in fm_body {
+        let t = line.trim();
+        if let Some((k, _)) = t.split_once(':') {
+            let key = k.trim().to_ascii_lowercase();
+            match key.as_str() {
+                "project" => {
+                    if let Some(p) = &meta.project {
+                        if !p.trim().is_empty() {
+                            new_fm_lines.push(format!("project: {}", format_yaml_val(p)));
+                        }
+                    }
+                    handled_project = true;
+                    continue;
+                }
+                "title" => {
+                    if let Some(tit) = &meta.title {
+                        if !tit.trim().is_empty() {
+                            new_fm_lines.push(format!("title: {}", format_yaml_val(tit)));
+                        }
+                    }
+                    handled_title = true;
+                    continue;
+                }
+                "description" | "desc" => {
+                    if let Some(d) = &meta.description {
+                        if !d.trim().is_empty() {
+                            new_fm_lines.push(format!("description: {}", format_yaml_val(d)));
+                        }
+                    }
+                    handled_desc = true;
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        new_fm_lines.push(line.to_string());
+    }
+
+    if !handled_project {
+        if let Some(p) = &meta.project {
+            if !p.trim().is_empty() {
+                new_fm_lines.push(format!("project: {}", format_yaml_val(p)));
+            }
+        }
+    }
+    if !handled_title {
+        if let Some(tit) = &meta.title {
+            if !tit.trim().is_empty() {
+                new_fm_lines.push(format!("title: {}", format_yaml_val(tit)));
+            }
+        }
+    }
+    if !handled_desc {
+        if let Some(d) = &meta.description {
+            if !d.trim().is_empty() {
+                new_fm_lines.push(format!("description: {}", format_yaml_val(d)));
+            }
+        }
+    }
+
+    new_fm_lines.push(all_lines[count - 1].to_string());
+    let mut out = new_fm_lines.join("\n");
+    if !rest.is_empty() {
+        out.push('\n');
+        out.push_str(&rest.join("\n"));
+    }
+    if source.ends_with('\n') && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
 /// 1-based line where `id` first appears as a whole token (outside comments and front matter).
 pub fn find_line(source: &str, id: &str) -> Option<u32> {
     if id.is_empty() {
@@ -239,6 +414,43 @@ mod tests {
         assert_eq!(front_matter_lines("---\ntitle: X\n---\nflowchart TD"), 3);
         assert_eq!(front_matter_lines("flowchart TD\n---"), 0);
         assert_eq!(front_matter_lines("---\nunterminated"), 0);
+    }
+
+    #[test]
+    fn front_matter_parsing_and_updating() {
+        let src = "---\ntitle: \"My Title\"\nproject: Store\n---\nflowchart TD\n  A --> B\n";
+        let fm = parse_front_matter(src);
+        assert_eq!(fm.title.as_deref(), Some("My Title"));
+        assert_eq!(fm.project.as_deref(), Some("Store"));
+        assert_eq!(fm.description, None);
+
+        // Update project and add description
+        let updated = update_front_matter(
+            src,
+            &DiagramFrontMatter {
+                title: Some("New Title".into()),
+                description: Some("New Description".into()),
+                project: Some("Storefront".into()),
+            },
+        );
+        let fm2 = parse_front_matter(&updated);
+        assert_eq!(fm2.title.as_deref(), Some("New Title"));
+        assert_eq!(fm2.description.as_deref(), Some("New Description"));
+        assert_eq!(fm2.project.as_deref(), Some("Storefront"));
+        assert!(updated.contains("flowchart TD\n  A --> B"));
+
+        // Creating frontmatter on a file that didn't have one
+        let plain = "flowchart LR\n  A --> B\n";
+        let with_fm = update_front_matter(
+            plain,
+            &DiagramFrontMatter {
+                title: None,
+                description: None,
+                project: Some("Alpha".into()),
+            },
+        );
+        assert_eq!(parse_front_matter(&with_fm).project.as_deref(), Some("Alpha"));
+        assert!(with_fm.contains("flowchart LR\n  A --> B"));
     }
 
     #[test]
