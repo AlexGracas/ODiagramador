@@ -28,6 +28,17 @@ claude mcp add odiagramador -- /Applications/ODiagramador.app/Contents/MacOS/odg
 
 No Windows o caminho é `...\ODiagramador\odg.exe`. Guia completo: [docs/AGENTS.md](https://github.com/AlexGracas/ODiagramador/blob/main/docs/AGENTS.md).
 
+## Novidades da 0.8.0
+- **Organização por Projetos**: suporte à sintaxe oficial de frontmatter Mermaid (`project: ...`) em diagramas `.mmd`. A barra lateral agora agrupa diagramas por projeto.
+- **Criação com Projeto Obrigatório**: novos diagramas agora exigem atribuir um projeto (no app e via MCP `create_diagram`).
+- **Propriedades do Diagrama**: novo diálogo acessível no cabeçalho para visualizar e editar Projeto, Título e Descrição do diagrama ativo.
+- **Data da Última Edição**: a data de modificação (`DD/MM`) agora aparece no canto esquerdo de cada linha na barra lateral, junto ao ícone de status.
+- **MCP (Model Context Protocol)**:
+  - Recursos `projects://list` e `projects://current` para listagem e descoberta do projeto ativo.
+  - Template `project://{name}` para diagramas de um projeto específico.
+  - Nova ferramenta `set_diagram_properties` para atualizar metadados sem alterar o corpo do diagrama.
+  - Nova ferramenta `list_projects` para agentes de IA inspecionarem projetos e diagramas associados.
+
 ## Novidades da 0.7.1
 - **Diagramas de classe (UML 2.5)**: novos construtores — classe abstrata, interface, enumeração e pacote — e um botão com o **símbolo UML** de cada relação: associação, associação direcionada, generalização, realização, dependência, agregação, composição e interface fornecida (pirulito). Cada formulário diz o papel de cada classe (pai/filha, todo/parte, cliente/fornecedor) e explica a notação.
 - **Setas de classe encostam na classe**: triângulos e losangos não ficam mais soltos a ~9px da caixa (defeito do visual "neo" do Mermaid 12).
